@@ -107,7 +107,9 @@ struct SettingsScreen: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("服务器") {
+                // Section 想同时要标题和脚注，就得用 header:/footer: 两个闭包，
+                // Section("标题"){...} footer:{...} 这种混写编不过
+                Section {
                     TextField("https://192.168.8.191:8445", text: $base)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -126,6 +128,8 @@ struct SettingsScreen: View {
                         }
                     }
                     if let r = result { Text(r).font(.caption).foregroundStyle(.secondary) }
+                } header: {
+                    Text("服务器")
                 } footer: {
                     Text("家里用局域网地址；在外面填 Cloudflare 隧道的域名。\n"
                          + "服务器开了 Basic Auth，外网访问会让你输一次账号密码。")
