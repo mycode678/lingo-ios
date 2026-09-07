@@ -1,0 +1,46 @@
+# 用 XcodeGen 生成工程：project.pbxproj 是机器生成的，手写会烂掉，
+# 这个 yml 才是真正的工程定义（改依赖、改配置都在这里）。
+#   brew install xcodegen && xcodegen generate && open Lingo.xcodeproj
+name: Lingo
+options:
+  bundleIdPrefix: com.lingo
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Lingo:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen
+        INFOPLIST_FILE: Resources/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
+        ENABLE_BITCODE: NO
+        SUPPORTS_MACCATALYST: NO
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: 听说训练台
+        UIBackgroundModes: [audio]             # 锁屏继续放音
+        NSMicrophoneUsageDescription: 录下你的跟读，跟原声比对打分。录音只发到你自己的服务器。
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true         # 自签证书的局域网服务器
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIUserInterfaceStyle: Automatic
