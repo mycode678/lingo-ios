@@ -1,25 +1,26 @@
-# 云端编译 iPhone App：出一个未签名的 .ipa，用 SideStore 在手机上签名安装。
-# 未签名是故意的 —— 签名要用你自己的 Apple ID，那一步在手机上由 SideStore 完成，
-# 证书不用离开你的设备。
+# 云端编译 iPhone App：出一个未签名的 .ipa，用 Sideloadly / SideStore 在手机上
+# 用自己的 Apple ID 签名安装 —— 证书不用离开你的设备。
 name: build-ipa
 
 on:
   push:
     branches: [main]
     paths: ["ios/**", ".github/workflows/ios.yml"]
-  workflow_dispatch:            # 也可以手动点一下就编
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-14           # 苹果的机器，Xcode 已经装好了
+    runs-on: macos-14
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
-      - name: 看一眼环境
+      # runner 默认还是 Xcode 15.4，而 XcodeGen 2.46 生成的工程格式要 16 才读得懂
+      - name: 选 Xcode 16
         run: |
+          ls /Applications | grep -i "^Xcode_16" || true
+          sudo xcode-select -s /Applications/Xcode_16.1.app
           xcodebuild -version
-          ls /Applications | grep -i xcode
 
       - name: 装 XcodeGen
         run: brew install xcodegen
@@ -40,11 +41,7 @@ jobs:
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO \
-            build | xcpretty || xcodebuild \
-            -project Lingo.xcodeproj -scheme Lingo -configuration Release -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=NO build
+            build
 
       - name: 打包成 .ipa
         working-directory: ios
