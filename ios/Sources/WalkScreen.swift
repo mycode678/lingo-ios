@@ -101,7 +101,7 @@ struct WalkScreen: View {
             .navigationTitle("随身模式")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button("关闭") { player.pause(); vk.enable(false); dismiss() }
                 }
             }

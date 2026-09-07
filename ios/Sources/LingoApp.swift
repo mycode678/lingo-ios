@@ -67,6 +67,11 @@ struct BigButton: View {
 }
 
 extension View {
+    /// .buttonStyle(cond ? .borderedProminent : .bordered) 编不过 —— 两个是不同类型，
+    /// 只能分支写。包一个修饰器省事。
+    @ViewBuilder func prominent(_ on: Bool) -> some View {
+        if on { self.buttonStyle(.borderedProminent) } else { self.buttonStyle(.bordered) }
+    }
     func card() -> some View {
         self.padding(14)
             .background(Color(.secondarySystemGroupedBackground))

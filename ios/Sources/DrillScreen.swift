@@ -38,7 +38,7 @@ struct DrillScreen: View {
             .navigationTitle("精听")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showWalk = true } label: { Image(systemName: "headphones") }
                 }
             }
@@ -220,7 +220,7 @@ struct DrillScreen: View {
                     Image(systemName: "repeat")
                         .frame(width: 46, height: 50)
                 }
-                .buttonStyle(player.loop ? .borderedProminent : .bordered)
+                .prominent(player.loop)
 
                 ForEach([1.0, 0.75, 0.6, 0.5], id: \.self) { r in
                     Button {
@@ -231,7 +231,7 @@ struct DrillScreen: View {
                             .font(.system(size: 13))
                             .frame(maxWidth: .infinity, minHeight: 50)
                     }
-                    .buttonStyle(abs(Double(player.rate) - r) < 0.01 ? .borderedProminent : .bordered)
+                    .prominent(abs(Double(player.rate) - r) < 0.01)
                 }
             }
             HStack(spacing: 8) {

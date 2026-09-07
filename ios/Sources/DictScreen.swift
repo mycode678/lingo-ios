@@ -52,7 +52,7 @@ struct DictScreen: View {
             }
             .onSubmit(of: .search) { Task { await store.look(q) } }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     if !store.word.isEmpty {
                         Button {
                             Task { await store.addWord() }
@@ -138,7 +138,7 @@ struct DictScreen: View {
             .listStyle(.plain)
             .navigationTitle("例句")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("收起") { showList = false } } }
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("收起") { showList = false } } }
         }
         .presentationDetents([.medium, .large])
     }
