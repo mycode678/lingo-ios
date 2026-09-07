@@ -18,12 +18,14 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - Resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen
         TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
         ENABLE_BITCODE: NO
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     # Info.plist 由 XcodeGen 生成，不要再放进资源里 —— 两边都产出同一个文件会报
     # "Multiple commands produce Info.plist"（踩过）
     info:
