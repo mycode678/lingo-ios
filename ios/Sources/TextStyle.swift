@@ -163,6 +163,6 @@ struct LoopButton: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
-        .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 30, perform: onHold)
+        .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30, perform: onHold)
     }
 }

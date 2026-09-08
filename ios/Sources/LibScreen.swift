@@ -112,7 +112,7 @@ struct SettingsScreen: View {
     @State private var pass = Api.pass
     @State private var testing = false
     @State private var result: String?
-    @AppStorage("ui.entryFont") private var entryFont = 17.0
+    @AppStorage("ui.entryFont") private var entryFont = 18.0
     @AppStorage("ui.listFont") private var listFont = 15.0
     @AppStorage("ui.sentFont") private var sentFont = 21.0
     @AppStorage("ui.accent") private var accent = "#2f6fd0"
@@ -161,8 +161,8 @@ struct SettingsScreen: View {
                 }
 
                 Section {
-                    fontRow("词典正文", $entryFont, 13...26)
-                    fontRow("例句清单", $listFont, 12...22)
+                    fontRow("词典正文", $entryFont, 14...30)
+                    fontRow("例句清单", $listFont, 13...26)
                     fontRow("精听台句子", $sentFont, 16...32)
                 } header: { Text("字号") } footer: {
                     Text("拖动就能看到下面的示例跟着变，调到看着舒服为止。")

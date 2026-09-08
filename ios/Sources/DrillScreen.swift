@@ -174,7 +174,7 @@ struct DrillScreen: View {
                     if !vm.chunks.isEmpty { chunkStrip }   // 小句：圈半秒反复听的入口
                     if anyText {                           // 一样都没勾就整块不出现
                         sentenceCard(s)
-                            .frame(height: min(cardHeight, geo.size.height * 0.3))
+                            .frame(height: cardHeight(geo.size.height))
                             .padding(.horizontal, T.side)
                     }
                 }
@@ -275,10 +275,17 @@ struct DrillScreen: View {
                            onHold: { showLoop = true })
 
                 // 连播＝一句播完自动跳下一句（原来只能在设置抽屉里开）
-                Button { autoNext.toggle() } label: {
-                    Label("连播", systemImage: "text.line.first.and.arrowtriangle.forward").fixedSize()
-                }
-                .buttonStyle(LabelButton(on: autoNext))
+                // 点＝开关连播，按住＝设"换下一句之前停多久"
+                Label("连播", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    .fixedSize()
+                    .font(.system(size: 12))
+                    .foregroundStyle(autoNext ? Color.accentColor : Color.primary.opacity(0.7))
+                    .padding(.horizontal, 9).frame(height: 38)
+                    .background(autoNext ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .contentShape(Rectangle())
+                    .onTapGesture { autoNext.toggle() }
+                    .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30) { showGap = true }
 
                 gapChip
                 showMenu
@@ -321,7 +328,7 @@ struct DrillScreen: View {
                         // 原文卡固定高度（切句不跳），句子长了在卡片里自己滚，不会被截断
                         if anyText {
                             sentenceCard(s)
-                                .frame(height: cardHeight)
+                                .frame(height: cardHeight(geo.size.height))
                                 .padding(.horizontal, T.side)
                         }
                         // 小句一律排一行横着滑：长句子换行排会变成两行，
@@ -615,7 +622,7 @@ struct DrillScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture(perform: tap)
-            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 30, perform: hold)
+            .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30, perform: hold)
     }
 
     private func setRate(_ i: Int, _ v: Double) {
@@ -626,15 +633,22 @@ struct DrillScreen: View {
     }
 
     /// 只跟字号有关，跟句子长短无关：短句不塌、长句在卡内滚，切句时纹丝不动
-    /// 勾了几样才占多高；一样都没勾就是 0（卡片整个不出现，空间全给波形）
+    /// 勾了几样才占多高；一样都没勾就是 0（卡片整个不出现，空间全给波形）。
+    ///
+    /// 两条硬要求（都是被截图打脸打出来的）：
+    /// 1. 按**整行**算 —— 字号调大以后半行文字会被卡边切掉，看着像被小句盖住；
+    /// 2. **封顶**在屏幕的三分之一 —— 不封顶时长句子会把小句和"没听懂"那排顶出屏幕。
+    /// 超出的部分在卡片里自己滚。
     private var anyText: Bool { showEn || showCn || showDef || showDcn }
-    private var cardHeight: CGFloat {
+    private func cardHeight(_ screenH: CGFloat) -> CGFloat {
         guard anyText else { return 0 }
-        return 20
-            + (showEn  ? CGFloat(sentFont) * 2.9 : 0)
-            + (showCn  ? CGFloat(cnFont) * 1.7 : 0)
-            + (showDef ? CGFloat(cnFont) * 1.5 : 0)
-            + (showDcn ? CGFloat(cnFont) * 1.5 : 0)
+        let line = CGFloat(sentFont) * 1.35          // 一行原文的高度
+        var v: CGFloat = 20                          // 上下内边距
+        if showEn  { v += line * 3 }                 // 原文最多摆三行
+        if showCn  { v += CGFloat(cnFont) * 1.5 * 2 }
+        if showDef { v += CGFloat(cnFont) * 1.45 }
+        if showDcn { v += CGFloat(cnFont) * 1.45 }
+        return min(v, screenH * 0.34)
     }
 
     private func sentenceCard(_ s: Api.Sentence) -> some View {
@@ -1006,9 +1020,14 @@ struct DrillScreen: View {
     /// 一段播完 → 等"换下一句之前"这个间隔 → 再跳。
     /// 中途要是切了句或停了播，这次回调作废（拿当时那句的地址对一下就知道）。
     private func autoAdvance(after src: String) {
-        guard autoNext else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, gapOut)) {
-            guard autoNext, store.current?.src == src else { return }
+        // 这个闭包是播放器回调，捕获的是**当时那份 View 值拷贝** ——
+        // 读 self.autoNext 拿到的是设它时的旧值，之后在界面上开"连播"它根本看不见
+        // （"先点连播再点播放没有连播"就是这么来的）。所以现取 UserDefaults；
+        // player 和 store 是引用类型，可以直接读到最新的。
+        let on = { UserDefaults.standard.bool(forKey: "drill.autoNext") }
+        guard on() else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, player.gapOut)) {
+            guard on(), store.current?.src == src else { return }
             step(1)
         }
     }

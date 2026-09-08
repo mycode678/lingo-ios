@@ -76,8 +76,8 @@ struct Pill: View {
     var on: Bool = false
     var body: some View {
         Text(text)
-            .font(.system(size: 13))
-            .padding(.horizontal, 12).padding(.vertical, 7)
+            .font(.system(size: 16))                 // "最近查过"那些词，13 太小了
+            .padding(.horizontal, 13).padding(.vertical, 8)
             .background(on ? Color.accentColor : Color(.secondarySystemBackground))
             .foregroundStyle(on ? Color.white : Color.primary)
             .clipShape(Capsule())

@@ -79,7 +79,8 @@ struct SentenceListSheet: View {
             }
             .navigationTitle("\(store.word) · \(rows.count)/\(store.items.count) 句")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("收起") { dismiss() } } }
+            // 收起放左边：单手拿手机时左上比右上好够（右手拇指横过去更远）
+            .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button("收起") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
     }

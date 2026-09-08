@@ -9,7 +9,7 @@ struct DictScreen: View {
     @EnvironmentObject var player: Player
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage("ui.scheme") private var scheme = "system"
-    @AppStorage("ui.entryFont") private var entryFont = 17.0
+    @AppStorage("ui.entryFont") private var entryFont = 18.0
     @AppStorage("ui.listFont") private var listFont = 15.0
     @State private var q = ""
     @State private var suggestions: [String] = []
@@ -86,8 +86,8 @@ struct DictScreen: View {
             HStack(spacing: 6) {
                 ForEach(store.related.prefix(24), id: \.self) { w in
                     Button { Task { await store.look(w) } } label: {
-                        Text(w).font(.system(size: 12.5)).lineLimit(1)
-                            .padding(.horizontal, 11).padding(.vertical, 6)
+                        Text(w).font(.system(size: 15)).lineLimit(1)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
                             .background(Color.primary.opacity(0.06))
                             .foregroundStyle(Color.primary.opacity(0.75))
                             .clipShape(Capsule())
@@ -126,9 +126,10 @@ struct DictScreen: View {
                 Text("查一个词 → 点右上角「学这个词」，它在词典里的每条例句都会变成一张卡；\n"
                      + "点例句进「精听」：波形上圈出听不懂的那半秒反复听、放慢、标难点；\n"
                      + "练完打个分，系统按记忆曲线安排下次复习。")
-                    .font(.system(size: 15)).foregroundStyle(.secondary)
+                    .font(.system(size: 16)).foregroundStyle(.secondary)
                 if !store.hist.isEmpty {
-                    Text("最近查过").font(.caption).foregroundStyle(.secondary).padding(.top, 6)
+                    Text("最近查过").font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary).padding(.top, 6)
                     FlowLayout(spacing: 8) {
                         ForEach(store.hist.prefix(20)) { h in
                             Button { Task { await store.look(h.w) } } label: { Pill(text: h.w) }
@@ -145,7 +146,7 @@ struct DictScreen: View {
     private var listHandle: some View {
         Button { showList = true } label: {
             HStack {
-                Text("\(store.word) · \(store.items.count) 条例句").font(.system(size: 14, weight: .medium))
+                Text("\(store.word) · \(store.items.count) 条例句").font(.system(size: 15, weight: .medium))
                 Spacer()
                 Image(systemName: "chevron.up")
             }
