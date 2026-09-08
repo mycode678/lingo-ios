@@ -274,6 +274,12 @@ struct DrillScreen: View {
                            onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
                            onHold: { showLoop = true })
 
+                // 连播＝一句播完自动跳下一句（原来只能在设置抽屉里开）
+                Button { autoNext.toggle() } label: {
+                    Label("连播", systemImage: "text.line.first.and.arrowtriangle.forward").fixedSize()
+                }
+                .buttonStyle(LabelButton(on: autoNext))
+
                 gapChip
                 showMenu
 
@@ -609,7 +615,7 @@ struct DrillScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture(perform: tap)
-            .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 30, perform: hold)
+            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 30, perform: hold)
     }
 
     private func setRate(_ i: Int, _ v: Double) {

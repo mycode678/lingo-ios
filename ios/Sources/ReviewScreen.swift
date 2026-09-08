@@ -69,7 +69,7 @@ struct ReviewScreen: View {
                                     .foregroundStyle(.tertiary)
                                 Text("先听，别看字")
                                     .font(.system(size: 17)).foregroundStyle(.secondary)
-                                Text("听懂了再点下面「显示原文」对答案")
+                                Text("点一下这块＝播放／暂停，点两下＝翻开原文")
                                     .font(.caption).foregroundStyle(.tertiary)
                             }
                             Spacer(minLength: 0)
@@ -80,7 +80,7 @@ struct ReviewScreen: View {
                         // 中间这一大片就是主操作区：点一下＝再听一遍，点两下＝翻开/盖上原文。
                         // 双击必须写在单击前面，否则单击先吃掉手势，双击永远不触发。
                         .onTapGesture(count: 2) { withAnimation { shown.toggle() } }
-                        .onTapGesture { replay() }
+                        .onTapGesture { player.isPlaying ? player.pause() : replay() }
                         .overlay(                                           // 浅色背景下卡片要看得见边
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)

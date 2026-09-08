@@ -103,14 +103,14 @@ struct LoopSheet: View {
             Form {
                 Section {
                     // 顺序按"几遍"从少到多，无限放最后
-                    ForEach([2, 3, 5, 10, 0], id: \.self) { n in
+                    ForEach([1, 2, 3, 5, 10, 0], id: \.self) { n in
                         Button {
                             loopTimes = n; player.loopTimes = n
                             if !player.loop { player.loop = true; player.play() }
                             dismiss()
                         } label: {
                             HStack {
-                                Text(n == 0 ? "无限循环" : "循环 \(n) 遍")
+                                Text(n == 0 ? "无限循环" : (n == 1 ? "只放一遍" : "循环 \(n) 遍"))
                                 Spacer()
                                 if loopTimes == n {
                                     Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
@@ -119,11 +119,11 @@ struct LoopSheet: View {
                         }
                         .foregroundStyle(Color.primary)
                     }
-                    Stepper(value: Binding(get: { max(2, loopTimes) },
+                    Stepper(value: Binding(get: { max(1, loopTimes) },
                                            set: { loopTimes = $0; player.loopTimes = $0 }),
-                            in: 2...50) {
-                        HStack { Text("自己定"); Spacer()
-                            Text("\(max(2, loopTimes)) 遍").foregroundStyle(.secondary).monospacedDigit() }
+                            in: 1...50) {
+                        HStack { Text("自定义"); Spacer()
+                            Text("\(max(1, loopTimes)) 遍").foregroundStyle(.secondary).monospacedDigit() }
                     }
                 } footer: {
                     Text("循环键长按就到这儿。设了遍数以后，循环键上会显示数字。")
@@ -163,6 +163,6 @@ struct LoopButton: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
-        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 30, perform: onHold)
+        .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 30, perform: onHold)
     }
 }
