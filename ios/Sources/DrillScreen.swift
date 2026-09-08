@@ -35,6 +35,9 @@ struct DrillScreen: View {
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
     @AppStorage("drill.boostHF") private var boostHF = false        // 听辅音（高频增强）
+    /// 倍速档位自己定：慢到 0.4 快到 2.0，几档也自己定（2~5 档）。
+    /// 存成一串逗号分隔的数，简单、好迁移；解析不出来就退回默认四档。
+    @AppStorage("drill.rates") private var ratesCSV = "1.0,0.75,0.6,0.5"
 
     @State private var showText = true
     @State private var showWalk = false
@@ -122,6 +125,12 @@ struct DrillScreen: View {
                             HStack {
                                 Text("跟读结果").font(.system(size: 12)).foregroundStyle(.secondary)
                                 Spacer()
+                                // 原声和自己的录音来回对比 —— 只有录了才有意义，就跟结果放一起
+                                Button { rec.playAB(range: vm.selection) } label: {
+                                    Label("对比", systemImage: "arrow.left.arrow.right")
+                                        .font(.system(size: 12))
+                                }
+                                .buttonStyle(QuietButton())
                                 Button { rec.reset() } label: {
                                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                                 }
@@ -241,6 +250,12 @@ struct DrillScreen: View {
                 .buttonStyle(IconButton())
                 .disabled(vm.selection == nil)
                 .opacity(vm.selection == nil ? 0.35 : 1)
+            // 跳到下一个难点：本来在底排，底排腾给切句和播放了。
+            // 它本来就是选区类操作，放这儿更顺；没标难点时不出现，省一个位置。
+            if !vm.marks.isEmpty {
+                Button { vm.nextMark() } label: { Image(systemName: "arrow.right.to.line") }
+                    .buttonStyle(IconButton())
+            }
         }
         .padding(.horizontal, T.side)
         .frame(height: 36)
@@ -258,6 +273,31 @@ struct DrillScreen: View {
         .foregroundStyle(Color.primary.opacity(0.75))
         .background(Color.primary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+    }
+
+    // MARK: - 倍速档位
+    private var rates: [Double] {
+        let v = ratesCSV.split(separator: ",")
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+            .filter { $0 >= 0.3 && $0 <= 3.0 }
+        return v.count >= 2 ? v : [1.0, 0.75, 0.6, 0.5]
+    }
+    /// 0.75 → "0.75x"，1.0 → "1x"：小屏上少一个字符就少挤一分
+    private func rateLabel(_ v: Double) -> String {
+        var t = String(format: "%.2f", v)
+        while t.hasSuffix("0") { t.removeLast() }
+        if t.hasSuffix(".") { t.removeLast() }
+        return t + "x"
+    }
+    /// 当前速度未必正好等于某一档（改过档位、或在别处调过），选最近的那档亮起来
+    private var nearestRate: Double {
+        rates.min(by: { abs($0 - Double(player.rate)) < abs($1 - Double(player.rate)) }) ?? 1.0
+    }
+    private func setRate(_ i: Int, _ v: Double) {
+        var a = rates
+        guard a.indices.contains(i) else { return }
+        a[i] = (v * 100).rounded() / 100
+        ratesCSV = a.map { String(format: "%.2f", $0) }.joined(separator: ",")
     }
 
     private var chunkHeight: CGFloat { 84 }
@@ -454,13 +494,12 @@ struct DrillScreen: View {
                 .buttonStyle(.plain)
 
                 Picker("", selection: Binding(
-                get: { Double(player.rate) },
-                set: { player.rate = Float($0); if player.isPlaying { player.play() } })) {
-                Text("1.0x").tag(1.0)
-                Text("0.75x").tag(0.75)
-                Text("0.6x").tag(0.6)
-                Text("0.5x").tag(0.5)
-            }
+                    get: { nearestRate },
+                    set: { player.rate = Float($0); if player.isPlaying { player.play() } })) {
+                    ForEach(rates, id: \.self) { r in
+                        Text(rateLabel(r)).tag(r)
+                    }
+                }
                 .pickerStyle(.segmented)
             }
             .padding(.horizontal, T.side)
@@ -492,6 +531,37 @@ struct DrillScreen: View {
                         Text("一直循环").tag(0)
                         ForEach([2, 3, 5, 10], id: \.self) { Text("\($0) 遍").tag($0) }
                     }
+                }
+                Section {
+                    ForEach(Array(rates.enumerated()), id: \.offset) { i, v in
+                        Stepper(value: Binding(get: { v }, set: { setRate(i, $0) }),
+                                in: 0.4...2.0, step: 0.05) {
+                            HStack {
+                                Text("第 \(i + 1) 档")
+                                Spacer()
+                                Text(rateLabel(v)).foregroundStyle(.secondary).monospacedDigit()
+                            }
+                        }
+                    }
+                    Stepper(value: Binding(
+                        get: { rates.count },
+                        set: { n in
+                            var a = rates
+                            while a.count > max(2, n) { a.removeLast() }
+                            while a.count < min(5, n) { a.append(max(0.4, (a.last ?? 1.0) - 0.1)) }
+                            ratesCSV = a.map { String(format: "%.2f", $0) }.joined(separator: ",")
+                        }), in: 2...5) {
+                        HStack { Text("一共几档"); Spacer()
+                            Text("\(rates.count) 档").foregroundStyle(.secondary) }
+                    }
+                    Button("恢复默认（1x / 0.75x / 0.6x / 0.5x）") {
+                        ratesCSV = "1.0,0.75,0.6,0.5"
+                    }
+                } header: {
+                    Text("倍速档位")
+                } footer: {
+                    Text("底部那一排就是这几档，从左到右。慢到 0.4 快到 2.0 都行 —— "
+                         + "听熟了就往快里调，新句子先调慢。")
                 }
                 Section {
                     Toggle("音量键切上下句", isOn: $volKeys)
