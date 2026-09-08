@@ -190,6 +190,8 @@ struct DrillScreen: View {
             .overlay(alignment: .bottom) {
                 if rec.hasTake && showTake {
                     takePanel
+                        // 封顶：盖满了就没法在波形上圈选区（横屏踩过）
+                        .frame(maxHeight: geo.size.height * 0.55)
                         .background(.ultraThinMaterial)
                         .transition(.move(edge: .bottom))
                 }
@@ -203,6 +205,16 @@ struct DrillScreen: View {
         // （竖屏那列早就锁了宽，所以只有横屏出这个毛病）。
         .frame(width: geo.size.width)
         .padding(.bottom, 2)
+        // 横屏两侧那两条空白（刘海和 home 条让出来的安全区）本来白占地方，
+        // 拿来当播放/暂停：手掌握着机器时拇指正好落在那儿。
+        .overlay {
+            HStack(spacing: 0) {
+                edgeTapZone
+                Spacer(minLength: 0)
+                edgeTapZone
+            }
+            .ignoresSafeArea()
+        }
         .overlay {
             if let h = stepHint {
                 Text(h)
@@ -216,6 +228,14 @@ struct DrillScreen: View {
             }
         }
         .padding(.top, 2)
+    }
+
+    /// 横屏两侧的空白条：轻触＝播放/暂停。不画东西，就是个隐形的大按钮。
+    private var edgeTapZone: some View {
+        Color.clear
+            .frame(width: 30)
+            .contentShape(Rectangle())
+            .onTapGesture { player.toggle() }
     }
 
     /// 底部控制条：**一条**横向可滑的长条，竖屏横屏共用。
@@ -260,20 +280,23 @@ struct DrillScreen: View {
                     if !showTake { takeReopen }
                 }
 
-                Button {
-                    vm.setSelection(a: nil, b: nil, play: false)
-                    vm.zoomAll()
-                    player.claim(loop: player.loop, times: loopTimes, segment: nil,
-                                 onEnd: { autoAdvance(after: store.current?.src ?? "") })
-                    player.play(from: 0)
-                } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
-                .buttonStyle(LabelButton(on: vm.selection == nil))
+                // 整句、铺满只在圈了选区时才出现 —— 没选区时它们没意义，白占位置
+                // （小句再点一次也能回到整句）
+                if vm.selection != nil {
+                    Button {
+                        vm.setSelection(a: nil, b: nil, play: false)
+                        vm.zoomAll()
+                        player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                                     onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                        player.play(from: 0)
+                    } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
+                    .buttonStyle(LabelButton())
 
-                Button { vm.zoomToSelection() } label: {
-                    Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
+                    Button { vm.zoomToSelection() } label: {
+                        Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
+                    }
+                    .buttonStyle(LabelButton())
                 }
-                .buttonStyle(LabelButton())
-                .disabled(vm.selection == nil).opacity(vm.selection == nil ? 0.35 : 1)
 
                 LoopButton(player: player, times: loopTimes,
                            onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
@@ -689,7 +712,17 @@ struct DrillScreen: View {
     private func chunkChip(_ i: Int, _ c: (Int, Int)) -> some View {
         let a = vm.words[c.0].s, b = vm.words[c.1].e
         let on = vm.selection.map { abs($0.lowerBound - a) < 0.02 && abs($0.upperBound - b) < 0.02 } ?? false
-        return Button { vm.selectChunk(i) } label: {
+        return Button {
+            if on {                                  // 再点一次＝取消选中，回到整句
+                vm.setSelection(a: nil, b: nil, play: false)
+                vm.zoomAll()
+                player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                player.play(from: 0)
+            } else {
+                vm.selectChunk(i)
+            }
+        } label: {
             HStack(spacing: 5) {
                 Text(vm.words[c.0...c.1].map(\.w).joined(separator: " ")).lineLimit(1)
                 Text(String(format: "%.1f", b - a)).font(.system(size: 11)).foregroundStyle(.secondary)
