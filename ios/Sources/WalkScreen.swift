@@ -149,8 +149,8 @@ struct WalkScreen: View {
     }
 
     private func wire() {
-        vk.onUp = { next() }
-        vk.onDown = { prev() }
+        vk.onUp = { prev() }        // ＋在上＝上一句
+        vk.onDown = { next() }      // −在下＝下一句
         NowPlaying.shared.onNext = { next() }
         NowPlaying.shared.onPrev = { prev() }
         NowPlaying.shared.onToggle = { player.toggle() }

@@ -391,7 +391,7 @@ struct DrillScreen: View {
                 Section {
                     Toggle("音量键切上下句", isOn: $volKeys)
                 } header: { Text("音量键") } footer: {
-                    Text("音量＋＝下一句，音量−＝上一句，按完音量自动复位；离开这一屏自动还给系统。")
+                    Text("音量＋（上面那个）＝上一句，音量−（下面那个）＝下一句；按完音量会自动复位，离开这一屏自动还给系统。")
                 }
                 Section("选区") {
                     Toggle("拖动时吸到词边", isOn: $snap)
@@ -526,10 +526,12 @@ struct DrillScreen: View {
         try? await Api.fav(s.src, !isFav, meta: store.meta(s))
         await store.refreshProgress()
     }
+    /// 音量＋在机身上面＝上一句，音量−在下面＝下一句。
+    /// 按物理位置来最不容易按错，别的听力 App 也是这个方向。
     private func wireVolumeKeys() {
         let vk = VolumeKeys.shared
-        vk.onUp = { step(1) }
-        vk.onDown = { step(-1) }
+        vk.onUp = { step(-1) }
+        vk.onDown = { step(1) }
         vk.enable(volKeys)
     }
     private func step(_ d: Int) {

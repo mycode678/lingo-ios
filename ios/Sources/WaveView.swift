@@ -263,7 +263,7 @@ final class WaveUIView: UIView {
         // 播放头
         let hx = x(head)
         if hx >= -2 && hx <= W + 2 {
-            ctx.setStrokeColor(C.markLine.cgColor); ctx.setLineWidth(1.5)
+            ctx.setStrokeColor(C.markLine.cgColor); ctx.setLineWidth(2)
             ctx.move(to: CGPoint(x: hx, y: laneTop)); ctx.addLine(to: CGPoint(x: hx, y: laneBot))
             ctx.strokePath()
             ctx.setFillColor(C.markLine.cgColor)
@@ -311,6 +311,10 @@ extension UIColor {
 /// 包给 SwiftUI 用
 struct WaveView: UIViewRepresentable {
     @ObservedObject var vm: DrillModel
+    /// 必须自己盯住播放器：只有它的 position 变化触发重绘，波形上的红色播放头才会跟着走。
+    /// 上一版把界面上显示时间的那行去掉后，没人再"读"这个值，SwiftUI 就不重绘了，
+    /// 于是红条不动 —— 这种依赖是隐式的，最容易踩。
+    @ObservedObject var player = Player.shared
 
     func makeUIView(context: Context) -> WaveUIView {
         let v = WaveUIView()
@@ -324,10 +328,10 @@ struct WaveView: UIViewRepresentable {
     }
 
     func updateUIView(_ v: WaveUIView, context: Context) {
-        v.duration = Player.shared.duration
+        v.duration = player.duration
         v.view0 = vm.view.0; v.view1 = vm.view.1
         v.selA = vm.selection?.lowerBound; v.selB = vm.selection?.upperBound
-        v.head = Player.shared.position
+        v.head = player.position
         v.words = vm.words
         v.marks = vm.marks
         v.snapEnabled = vm.snap
