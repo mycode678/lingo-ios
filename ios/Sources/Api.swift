@@ -104,7 +104,8 @@ enum Api {
     static func get<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
         var r = URLRequest(url: url(path))
         if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
-        let (d, _) = try await session.data(for: r)
+        let (d, resp) = try await session.data(for: r)
+        try check(resp)
         return try JSONDecoder().decode(T.self, from: d)
     }
 
@@ -115,11 +116,28 @@ enum Api {
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
         r.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (d, _) = try await session.data(for: r)
+        let (d, resp) = try await session.data(for: r)
+        try check(resp)
         return try JSONDecoder().decode(T.self, from: d)
     }
 
     struct OK: Codable { var ok: Bool? }
+
+    /// 服务器现在一律要账号密码，401 要说人话，别让人对着解码失败发呆
+    enum Err: LocalizedError {
+        case unauthorized, http(Int)
+        var errorDescription: String? {
+            switch self {
+            case .unauthorized: return "账号或密码不对（在设置里填服务器账号密码）"
+            case .http(let c):  return "服务器返回 \(c)"
+            }
+        }
+    }
+    static func check(_ resp: URLResponse) throws {
+        guard let h = resp as? HTTPURLResponse else { return }
+        if h.statusCode == 401 { throw Err.unauthorized }
+        if h.statusCode >= 400 { throw Err.http(h.statusCode) }
+    }
 
     // MARK: - 具体接口
 

@@ -53,7 +53,7 @@ final class Store: ObservableObject {
             // 出门前用得上：把这个词的音频悄悄下到本地
             Task.detached { await Cache.shared.prefetch(sent.items.map(\.src)) }
         } catch {
-            self.error = "查不到：\(error.localizedDescription)"
+            self.error = error.localizedDescription
         }
     }
 
