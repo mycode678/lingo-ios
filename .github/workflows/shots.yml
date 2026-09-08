@@ -105,10 +105,14 @@ jobs:
       - name: 交互测试
         run: |
           cd ios
+          # 用 UDID 指定设备，按名字找在这台 runner 上不一定命中
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone 15 Pro Max (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
+          echo "在 $UDID 上跑交互测试"
+          set -o pipefail
           xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
-            -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max' \
+            -destination "platform=iOS Simulator,id=$UDID" \
             -only-testing:LingoUITests \
-            CODE_SIGNING_ALLOWED=NO | tail -40
+            CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "Test Case|error:|failed|passed|\*\* TEST" | tail -40
 
       - uses: actions/upload-artifact@v4
         with:

@@ -55,3 +55,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen.uitests
         GENERATE_INFOPLIST_FILE: YES
+
+# XcodeGen 默认生成的 scheme 不带测试动作，xcodebuild test 会说"找不到设备"
+# （其实是找不到可测的 target）。这里显式挂上。
+schemes:
+  Lingo:
+    build:
+      targets:
+        Lingo: all
+        LingoUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [LingoUITests]
