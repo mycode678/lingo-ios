@@ -21,6 +21,7 @@ final class Player: ObservableObject {
     @Published var loopTimes = 0
     private var played = 0
     @Published var gapIn: Double = 0.8                     // 同一段两遍之间停多久
+    @Published var gapOut: Double = 1.2                    // 换下一句之前停多久
     @Published var segment: ClosedRange<Double>?           // 只播这一段（精听）
 
     /// 听辅音：把 2.5kHz 以上抬 10dB，句尾的 t/s/k 会清楚很多
@@ -162,7 +163,9 @@ final class Player: ObservableObject {
             memcpy(chOut[c], chIn[c] + Int(a), Int(frames) * MemoryLayout<Float>.size)
         }
         if !engine.isRunning { try? engine.start() }
-        node.scheduleBuffer(seg, at: nil, options: []) { [weak self] in
+        // 必须用 .dataPlayedBack：默认那个 completionHandler 是"数据被取走"就回调
+        // （dataConsumed），对短句来说几乎是立刻，于是循环间隔像没生效、还会把声音切掉。
+        node.scheduleBuffer(seg, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in
                 guard let self, my == self.gen else { return }
                 self.finished(range: range)

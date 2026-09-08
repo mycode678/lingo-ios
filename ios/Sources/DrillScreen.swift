@@ -25,7 +25,8 @@ struct DrillScreen: View {
 
     // 行为
     @AppStorage("drill.autoNext") private var autoNext = false
-    @AppStorage("drill.gapIn") private var gapIn = 0.8
+    @AppStorage("drill.gapIn") private var gapIn = 0.8              // 同一段两遍之间
+    @AppStorage("drill.gapOut") private var gapOut = 1.2            // 换下一句之前
     @AppStorage("drill.times") private var loopTimes = 0
     @AppStorage("drill.snap") private var snap = true
     @AppStorage("drill.autoAB") private var autoAB = true
@@ -88,7 +89,7 @@ struct DrillScreen: View {
             player.gapIn = gapIn
             player.claim(loop: player.loop, times: loopTimes,
                          segment: vm.selection,
-                         onEnd: { if autoNext { step(1) } })
+                         onEnd: { autoAdvance(after: s.src) })
             player.boostHF = boostHF
             rec.reset()
             showText = true
@@ -356,6 +357,7 @@ struct DrillScreen: View {
         .padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 4)
         .background(.bar)
         .onChange(of: gapIn) { _, v in player.gapIn = v }
+        .onChange(of: gapOut) { _, v in player.gapOut = v }
         .onChange(of: loopTimes) { _, v in player.loopTimes = v }
         .onChange(of: snap) { _, v in vm.snap = v }
     }
@@ -391,8 +393,12 @@ struct DrillScreen: View {
                 Section("播放") {
                     Toggle("切到一句就自动播放", isOn: $autoPlay)
                     Toggle("一段播完自动下一句", isOn: $autoNext)
-                    Picker("循环间隔", selection: $gapIn) {
-                        ForEach([0.3, 0.5, 0.8, 1.2, 2.0], id: \.self) {
+                    Picker("同一段两遍之间", selection: $gapIn) {
+                        ForEach([0.3, 0.5, 0.8, 1.2, 2.0, 3.0], id: \.self) {
+                            Text("\($0, specifier: "%.1f") 秒").tag($0) }
+                    }
+                    Picker("换下一句之前", selection: $gapOut) {
+                        ForEach([0.0, 0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) {
                             Text("\($0, specifier: "%.1f") 秒").tag($0) }
                     }
                     Picker("循环遍数", selection: $loopTimes) {
@@ -560,6 +566,16 @@ struct DrillScreen: View {
         showText = true
         rec.reset()
     }
+    /// 一段播完 → 等"换下一句之前"这个间隔 → 再跳。
+    /// 中途要是切了句或停了播，这次回调作废（拿当时那句的地址对一下就知道）。
+    private func autoAdvance(after src: String) {
+        guard autoNext else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, gapOut)) {
+            guard autoNext, store.current?.src == src else { return }
+            step(1)
+        }
+    }
+
     private func showFlash(_ t: String) {
         flash = t
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { if flash == t { flash = nil } }
