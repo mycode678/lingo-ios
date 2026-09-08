@@ -88,7 +88,8 @@ final class WaveUIView: UIView {
             self.setNeedsDisplay()
         }
         longPress = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38, execute: work)
+        // 180ms：比系统长按短一半。再短容易跟"拖着平移"打架，再长手指会等得难受。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {

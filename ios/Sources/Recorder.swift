@@ -1,0 +1,296 @@
+import Foundation
+import AVFoundation
+import SwiftUI
+
+/// 跟读：录音 → 机器听写逐词比对 → 语调/节奏相似度 → 存到服务器。
+/// 打分算法跟电脑版是同一套（音量+音高特征、DTW 对齐、相关系数），这里用 Swift 重写。
+@MainActor
+final class Recorder: NSObject, ObservableObject {
+    static let shared = Recorder()
+
+    struct Score { var words: Int?; var tone: Int; var rhythm: Int
+                   var overall: Int { (( words ?? ((tone + rhythm) / 2) ) + tone + rhythm) / 3 } }
+
+    @Published private(set) var isRecording = false
+    @Published private(set) var hasTake = false
+    @Published private(set) var heard: String?
+    @Published private(set) var heardAttributed = AttributedString("")
+    @Published private(set) var wrongWords: [String] = []
+    @Published private(set) var score: Score?
+    @Published private(set) var message: String?
+
+    private var recorder: AVAudioRecorder?
+    private var player: AVAudioPlayer?
+    private var fileURL: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("take.wav")
+    }
+
+    func reset() {
+        stopPlayback()
+        hasTake = false; heard = nil; wrongWords = []; score = nil; message = nil
+        heardAttributed = AttributedString("")
+    }
+
+    // MARK: - 录
+
+    func start() {
+        Task {
+            guard await requestMic() else { message = "没有麦克风权限，去设置里打开"; return }
+            Player.shared.pause()
+            let s = AVAudioSession.sharedInstance()
+            // 录的时候要切到能录能放的类别，录完再切回纯播放
+            try? s.setCategory(.playAndRecord, mode: .default,
+                               options: [.defaultToSpeaker, .allowBluetooth])
+            try? s.setActive(true)
+            // 直接录成 16k 单声道 wav：既能拿去分析，也能直接喂给服务器的 whisper
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 16000.0,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+            ]
+            do {
+                try? FileManager.default.removeItem(at: fileURL)
+                let r = try AVAudioRecorder(url: fileURL, settings: settings)
+                r.record()
+                recorder = r
+                isRecording = true
+                message = "录音中… 念完再按一次停"
+            } catch {
+                message = "开不了录音：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    func stop(sentence: Api.Sentence?, autoAB: Bool, range: ClosedRange<Double>?) {
+        guard isRecording else { return }
+        recorder?.stop(); recorder = nil
+        isRecording = false
+        hasTake = true
+        message = "处理中…"
+        let s = AVAudioSession.sharedInstance()
+        try? s.setCategory(.playback, mode: .spokenAudio, options: [.allowBluetoothA2DP, .allowAirPlay])
+        try? s.setActive(true)
+        Task { await analyse(sentence: sentence, autoAB: autoAB, range: range) }
+    }
+
+    private func requestMic() async -> Bool {
+        await withCheckedContinuation { c in
+            AVAudioApplication.requestRecordPermission { ok in c.resume(returning: ok) }
+        }
+    }
+
+    // MARK: - 分析
+
+    private func analyse(sentence: Api.Sentence?, autoAB: Bool, range: ClosedRange<Double>?) async {
+        guard let mine = try? loadPCM16k(fileURL) else { message = "读不到刚才的录音"; return }
+        guard mine.count > 16000 / 8 else { message = "没录到声音，再来一次"; return }
+        let nat = Player.shared.pcm16k(range: range)
+        guard nat.count > 1000 else { message = "原声还没载入"; return }
+
+        let A = analyze(nat), B = analyze(mine)
+        let g = grade(A, B)
+        score = Score(words: nil, tone: g.tone, rhythm: g.rhythm)
+        message = nil
+        if autoAB { playAB(range: range) }
+
+        // 机器听写：本机 whisper，录音只在自己家里流转
+        if let wav = try? Data(contentsOf: fileURL), let en = sentence?.en {
+            do {
+                let text = try await Api.recognize(wav: wav)
+                heard = text
+                let (attr, wrong, acc) = compare(ref: en, hyp: text)
+                heardAttributed = attr; wrongWords = wrong
+                score = Score(words: acc, tone: g.tone, rhythm: g.rhythm)
+                if let src = sentence?.src {
+                    await Api.uploadRec(src, data: wav, ext: "wav",
+                                        score: Double(score?.overall ?? 0), heard: text,
+                                        dur: Double(mine.count) / 16000)
+                }
+            } catch {
+                message = "听写服务没连上（曲线对比不受影响）"
+            }
+        }
+    }
+
+    // MARK: - 放
+
+    func playMine(range: ClosedRange<Double>?) {
+        Player.shared.pause()
+        stopPlayback()
+        guard let p = try? AVAudioPlayer(contentsOf: fileURL) else { return }
+        player = p
+        p.play()
+    }
+    /// 先原声、再自己的，隔 0.35 秒 —— 差别最听得出来
+    func playAB(range: ClosedRange<Double>?) {
+        stopPlayback()
+        Player.shared.loop = false
+        Player.shared.play(from: range?.lowerBound ?? 0)
+        let wait = ((range?.upperBound ?? Player.shared.duration)
+                    - (range?.lowerBound ?? 0)) / Double(Player.shared.rate) + 0.35
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            self?.playMine(range: range)
+        }
+    }
+    func stopPlayback() { player?.stop(); player = nil }
+
+    // MARK: - 特征与打分（跟电脑版同一套）
+
+    private func loadPCM16k(_ url: URL) throws -> [Float] {
+        let f = try AVAudioFile(forReading: url)
+        let fmt = f.processingFormat
+        guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(f.length)),
+              let ch = buf.floatChannelData else { return [] }
+        try f.read(into: buf)
+        let n = Int(buf.frameLength)
+        var out = [Float](repeating: 0, count: n)
+        for i in 0..<n { out[i] = ch[0][i] }
+        if abs(fmt.sampleRate - 16000) < 1 { return out }
+        return Player.resample(out, from: fmt.sampleRate, to: 16000)
+    }
+
+    private struct Feat { var rms: [Float]; var rel: [Float]; var dur: Double }
+
+    /// 每 10 毫秒一帧：算音量，再用归一化自相关估音高，转成相对半音
+    private func analyze(_ pcm: [Float]) -> Feat {
+        let sr = 16000.0, hop = 160, frame = 1024
+        let nf = max(1, (pcm.count - frame) / hop)
+        var rms = [Float](repeating: 0, count: nf)
+        for i in 0..<nf {
+            var e: Float = 0
+            let o = i * hop
+            for j in 0..<frame { e += pcm[o + j] * pcm[o + j] }
+            rms[i] = sqrt(e / Float(frame))
+        }
+        let peak = rms.max() ?? 0
+        let th = max(peak * 0.06, 0.004)
+        var a = 0, b = nf - 1
+        while a < nf && rms[a] < th { a += 1 }
+        while b > a && rms[b] < th { b -= 1 }
+        a = max(0, a - 5); b = min(nf - 1, b + 5)
+        guard b > a else { return Feat(rms: [], rel: [], dur: 0) }
+
+        var R: [Float] = [], F: [Float] = []
+        let lo = Int(sr / 400), hi = min(Int(sr / 60), frame - 1)
+        for i in a...b {
+            R.append(rms[i] / (peak + 1e-9))
+            if rms[i] <= th { F.append(0); continue }
+            let o = i * hop
+            var e0: Float = 0
+            for j in 0..<frame { e0 += pcm[o + j] * pcm[o + j] }
+            if e0 < 1e-5 { F.append(0); continue }
+            var best = 0, bestV: Float = 0
+            var lag = lo
+            while lag <= hi {
+                var s: Float = 0, e1: Float = 0
+                var j = 0
+                while j + lag < frame { s += pcm[o + j] * pcm[o + j + lag]
+                                       e1 += pcm[o + j + lag] * pcm[o + j + lag]; j += 2 }
+                let v = s / (sqrt(e0 * e1) + 1e-9)
+                if v > bestV { bestV = v; best = lag }
+                lag += 1
+            }
+            F.append(bestV > 0.5 && best > 0 ? Float(sr) / Float(best) : 0)
+        }
+        // 中值平滑去倍频跳点 → 半音 → 减中位数得到"相对音高走势"
+        var S = F
+        for i in 1..<max(1, F.count - 1) {
+            let t = [F[i-1], F[i], F[i+1]].filter { $0 > 0 }.sorted()
+            S[i] = t.isEmpty ? 0 : t[t.count / 2]
+        }
+        let semi = S.map { $0 > 0 ? 12 * log2($0 / 100) : Float.nan }
+        let voiced = semi.filter { !$0.isNaN }.sorted()
+        let med = voiced.isEmpty ? 0 : voiced[voiced.count / 2]
+        return Feat(rms: R, rel: semi.map { $0.isNaN ? Float.nan : $0 - med },
+                    dur: Double(R.count) * 0.01)
+    }
+
+    private func grade(_ A: Feat, _ B: Feat) -> (tone: Int, rhythm: Int) {
+        guard !A.rms.isEmpty, !B.rms.isEmpty else { return (0, 0) }
+        let n = A.rms.count, m = B.rms.count
+        var D = [[Double]](repeating: [Double](repeating: .infinity, count: m + 1), count: n + 1)
+        D[0][0] = 0
+        func cost(_ i: Int, _ j: Int) -> Double {
+            var c = Double(abs(A.rms[i] - B.rms[j])) * 2.2
+            let x = A.rel[i], y = B.rel[j]
+            if !x.isNaN && !y.isNaN { c += Double(min(abs(x - y), 12)) * 0.13 }
+            else if x.isNaN != y.isNaN { c += 0.30 }
+            return c
+        }
+        for i in 1...n { for j in 1...m {
+            D[i][j] = cost(i-1, j-1) + min(D[i-1][j-1], min(D[i-1][j], D[i][j-1]))
+        } }
+        var path: [(Int, Int)] = []
+        var i = n, j = m
+        while i > 0 && j > 0 {
+            path.append((i-1, j-1))
+            let c = [D[i-1][j-1], D[i-1][j], D[i][j-1]]
+            let k = c.firstIndex(of: c.min()!)!
+            if k == 0 { i -= 1; j -= 1 } else if k == 1 { i -= 1 } else { j -= 1 }
+        }
+        let d = D[n][m] / Double(max(1, path.count))
+        var xs: [Double] = [], ys: [Double] = []
+        for (i, j) in path where !A.rel[i].isNaN && !B.rel[j].isNaN {
+            xs.append(Double(A.rel[i])); ys.append(Double(B.rel[j]))
+        }
+        var corr = 0.0
+        if xs.count > 8 {
+            let mx = xs.reduce(0, +) / Double(xs.count), my = ys.reduce(0, +) / Double(ys.count)
+            var sxy = 0.0, sxx = 0.0, syy = 0.0
+            for k in 0..<xs.count {
+                let a = xs[k] - mx, b = ys[k] - my
+                sxy += a * b; sxx += a * a; syy += b * b
+            }
+            corr = sxy / (sqrt(sxx * syy) + 1e-9)
+        }
+        let ratio = B.dur / max(0.01, A.dur)
+        let pen = min(1, abs(log(ratio)) / 0.55)
+        let rhythm = max(0, Int(100 * (1 - min(1, d / 0.85)) * (1 - pen * 0.45)))
+        return (max(0, Int(corr * 100)), rhythm)
+    }
+
+    /// 机器听写的结果跟原句逐词比：对的正常显示，错的标红，漏的补出来
+    private func compare(ref: String, hyp: String) -> (AttributedString, [String], Int) {
+        func norm(_ s: String) -> [String] {
+            s.lowercased().map { $0.isLetter || $0.isNumber || $0 == "'" ? $0 : " " }
+                .split(separator: " ").map(String.init)
+        }
+        let R = norm(ref), H = norm(hyp)
+        let n = R.count, m = H.count
+        guard n > 0 else { return (AttributedString(hyp), [], 0) }
+        var D = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+        for i in 0...n { D[i][0] = i }
+        for j in 0...m { D[0][j] = j }
+        for i in 1...n { for j in 1...m {
+            D[i][j] = min(D[i-1][j-1] + (R[i-1] == H[j-1] ? 0 : 1), min(D[i-1][j] + 1, D[i][j-1] + 1))
+        } }
+        var out = AttributedString(""), wrong: [String] = []
+        var i = n, j = m
+        var ops: [(String, Int, Int)] = []
+        while i > 0 || j > 0 {
+            if i > 0 && j > 0 && D[i][j] == D[i-1][j-1] + (R[i-1] == H[j-1] ? 0 : 1) {
+                ops.append((R[i-1] == H[j-1] ? "=" : "s", i-1, j-1)); i -= 1; j -= 1
+            } else if i > 0 && D[i][j] == D[i-1][j] + 1 { ops.append(("d", i-1, -1)); i -= 1 }
+            else { ops.append(("i", -1, j-1)); j -= 1 }
+        }
+        for (op, ri, hi) in ops.reversed() {
+            var piece: AttributedString
+            switch op {
+            case "=": piece = AttributedString(H[hi] + " ")
+            case "d": piece = AttributedString("[漏:" + R[ri] + "] ")
+                      piece.foregroundColor = .red; wrong.append(R[ri])
+            case "i": piece = AttributedString(H[hi] + " ")
+                      piece.foregroundColor = .orange; piece.strikethroughStyle = .single
+                      wrong.append(H[hi])
+            default:  piece = AttributedString(H[hi] + " ")
+                      piece.foregroundColor = .red; wrong.append(R[ri])
+            }
+            out += piece
+        }
+        let acc = max(0, Int(100 * (1 - Double(D[n][m]) / Double(n))))
+        return (out, Array(Set(wrong)).sorted(), acc)
+    }
+}

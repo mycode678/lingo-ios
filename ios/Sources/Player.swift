@@ -17,6 +17,9 @@ final class Player: ObservableObject {
     @Published private(set) var duration: Double = 0
     @Published var rate: Float = 1.0 { didSet { pitch.rate = max(0.35, min(2, rate)) } }
     @Published var loop = false                            // 循环当前这一段
+    /// 循环几遍就停；0 = 一直循环。PC 版精练台有"每句 N 遍"，这里照搬。
+    @Published var loopTimes = 0
+    private var played = 0
     @Published var gapIn: Double = 0.8                     // 同一段两遍之间停多久
     @Published var segment: ClosedRange<Double>?           // 只播这一段（精听）
 
@@ -126,7 +129,8 @@ final class Player: ObservableObject {
 
     // MARK: - 播放
 
-    func play(from: Double? = nil) {
+    func play(from: Double? = nil, keepCount: Bool = false) {
+        if !keepCount { played = 0 }
         guard let buf = buffer else { return }
         let range = segment ?? 0...max(0.01, duration)
         var start = from ?? position
@@ -168,13 +172,15 @@ final class Player: ObservableObject {
         isPlaying = false
         position = range.upperBound
         stopTicker()
-        if loop {
+        played += 1
+        if loop && (loopTimes == 0 || played < loopTimes) {
             let my = gen
             DispatchQueue.main.asyncAfter(deadline: .now() + gapIn) { [weak self] in
                 guard let self, my == self.gen, self.loop else { return }
-                self.play(from: range.lowerBound)
+                self.play(from: range.lowerBound, keepCount: true)
             }
         } else {
+            played = 0
             onSegmentEnd?()
         }
         NowPlaying.shared.update()
@@ -198,6 +204,32 @@ final class Player: ObservableObject {
         segment = r
         position = r?.lowerBound ?? 0
         if playNow { play(from: position) } else { pause() }
+    }
+
+    /// 给跟读打分用：取出（选区内的）原声，重采样到 16k
+    func pcm16k(range: ClosedRange<Double>?) -> [Float] {
+        guard let buf = buffer, let ch = buf.floatChannelData else { return [] }
+        let a = Int((range?.lowerBound ?? 0) * sampleRate)
+        let b = Int((range?.upperBound ?? duration) * sampleRate)
+        let i0 = max(0, min(Int(buf.frameLength), a)), i1 = max(i0, min(Int(buf.frameLength), b))
+        var out = [Float](repeating: 0, count: i1 - i0)
+        for i in i0..<i1 { out[i - i0] = ch[0][i] }
+        return Player.resample(out, from: sampleRate, to: 16000)
+    }
+
+    /// 线性插值重采样。给分析用够了 —— 音高和音量包络对这点误差不敏感。
+    static func resample(_ x: [Float], from: Double, to: Double) -> [Float] {
+        guard !x.isEmpty, abs(from - to) > 1 else { return x }
+        let ratio = from / to
+        let n = Int(Double(x.count) / ratio)
+        guard n > 1 else { return x }
+        var out = [Float](repeating: 0, count: n)
+        for i in 0..<n {
+            let p = Double(i) * ratio
+            let k = Int(p), f = Float(p - Double(k))
+            out[i] = k + 1 < x.count ? x[k] * (1 - f) + x[k + 1] * f : x[min(k, x.count - 1)]
+        }
+        return out
     }
 
     private func startTicker() {
