@@ -17,6 +17,7 @@ struct DrillScreen: View {
     @AppStorage("drill.snap") private var snap = true               // 拖选区吸到词边
     @AppStorage("drill.autoAB") private var autoAB = true           // 录完自动对比播放
     @AppStorage("drill.showDef") private var showDef = false        // 英文释义默认收起，小屏放不下
+    @AppStorage("drill.volKeys") private var volKeys = false        // 音量键切上下句
 
     @State private var showText = true
     @State private var showWalk = false
@@ -66,8 +67,13 @@ struct DrillScreen: View {
             rec.reset()
             showText = true
             flash = nil
+            wireVolumeKeys()
         }
-        .onDisappear { player.onSegmentEnd = nil }
+        .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
+        .onDisappear {
+            player.onSegmentEnd = nil
+            VolumeKeys.shared.enable(false)      // 离开这一屏就把音量键还给系统
+        }
     }
 
     // MARK: - 波形块
@@ -85,6 +91,11 @@ struct DrillScreen: View {
                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 if vm.loading { ProgressView().controlSize(.small) }
                 Spacer()
+                Button { volKeys.toggle() } label: {
+                    Image(systemName: volKeys ? "volume.2.fill" : "volume.slash")
+                        .frame(width: 38, height: 32)
+                }
+                .prominent(volKeys)
                 Button { showWalk = true } label: {
                     Image(systemName: "headphones").frame(width: 38, height: 32)
                 }.buttonStyle(.bordered)
@@ -343,6 +354,12 @@ struct DrillScreen: View {
                         ForEach([2, 3, 5, 10], id: \.self) { Text("\($0) 遍").tag($0) }
                     }
                 }
+                Section {
+                    Toggle("音量键切上下句", isOn: $volKeys)
+                } header: { Text("音量键") } footer: {
+                    Text("打开后：音量＋＝下一句，音量−＝上一句，按完音量会自动复位。"
+                         + "手揣兜里也能换句子。关掉就还给系统调音量。")
+                }
                 Section("选区") {
                     Toggle("拖动时吸到词边", isOn: $snap)
                 }
@@ -388,6 +405,15 @@ struct DrillScreen: View {
         showText = true
         rec.reset()
     }
+    /// 音量＋＝下一句，音量−＝上一句。开关一变立刻生效。
+    private func wireVolumeKeys() {
+        let vk = VolumeKeys.shared
+        vk.onUp = { step(1) }
+        vk.onDown = { step(-1) }
+        vk.enable(volKeys)
+        if volKeys { showFlash("音量键已接管：＋下一句　−上一句") }
+    }
+
     private func showFlash(_ t: String) {
         flash = t
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { if flash == t { flash = nil } }
