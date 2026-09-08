@@ -159,17 +159,28 @@ struct DrillScreen: View {
         // 剩下的 190 全归波形（文字默认不显示，勾了才占位）。
         // 别给波形写死大 minHeight，总和一超就是顶栏被切掉半截（1.jpg 那样）。
         VStack(spacing: 4) {
-            header
-            waveBlock                                   // 横屏的主角：弹性件，剩多少占多少
-                .frame(minHeight: 110, maxHeight: .infinity)
-                .padding(.horizontal, T.side)
-            selectionBar(28)
-            if anyText {                                // 一样都没勾就整块不出现
-                sentenceCard(s)
-                    .frame(height: min(cardHeight, geo.size.height * 0.3))
+            // 上半截（顶栏、波形、选区条、原文）单独一层：跟读结果只浮在这一截上，
+            // 不许盖住下面的控制条 —— 盖住了就没法边看结果边重录/重播（横屏尤其憋屈）。
+            VStack(spacing: 4) {
+                header
+                waveBlock                               // 横屏的主角：弹性件，剩多少占多少
+                    .frame(minHeight: 110, maxHeight: .infinity)
                     .padding(.horizontal, T.side)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(swipeToStep)
+                selectionBar(28)
+                if anyText {                            // 一样都没勾就整块不出现
+                    sentenceCard(s)
+                        .frame(height: min(cardHeight, geo.size.height * 0.3))
+                        .padding(.horizontal, T.side)
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(swipeToStep)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if rec.hasTake && showTake {
+                    takePanel
+                        .background(.ultraThinMaterial)
+                        .transition(.move(edge: .bottom))
+                }
             }
             controlStrip
             gradeRow(38)
@@ -185,15 +196,6 @@ struct DrillScreen: View {
                     .background(Color.black.opacity(0.72))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .transition(.opacity).allowsHitTesting(false)
-            }
-        }
-        // 录完的结果照样浮一层，不动上面的布局
-        .overlay(alignment: .bottom) {
-            if rec.hasTake && showTake {
-                takePanel
-                .frame(maxHeight: geo.size.height * 0.62)
-                .background(.ultraThinMaterial)
-                .transition(.move(edge: .bottom))
             }
         }
         .padding(.top, 2)
