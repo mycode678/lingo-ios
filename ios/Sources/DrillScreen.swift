@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit                 // 切句的那下轻震动（UIImpactFeedbackGenerator）
 
 /// 精听台（手机思维：拇指够得到的地方放常用的，一次性设置全收进抽屉）
 ///
@@ -41,6 +42,9 @@ struct DrillScreen: View {
     @State private var showStyle = false
     @State private var showList = false
     @State private var flash: String?
+    /// 滑动切句时中间闪一下"4/12" —— 单独一个状态，不能用 flash：
+    /// 换句子时 .task 会把 flash 清掉，提示还没看见就没了。
+    @State private var stepHint: String?
 
     var body: some View {
         NavigationStack {
@@ -78,15 +82,34 @@ struct DrillScreen: View {
                     waveBlock
                         .frame(minHeight: 88, maxHeight: .infinity)
                         .padding(.horizontal, T.side)
-                    selectionBar
-                    // 原文卡固定高度（切句不跳），句子长了在卡片里自己滚，不会被截断
-                    sentenceCard(s)
-                        .frame(height: cardHeight)
-                        .padding(.horizontal, T.side)
-                    if !vm.chunks.isEmpty {
-                        ScrollView { chunkRow }
-                            .frame(height: chunkHeight)
-                            .scrollIndicators(.hidden)
+                    // 波形以下这一整片都能左右滑着切句 —— 走路时单手最省事的动作。
+                    // 波形自己不接：那儿要拖选区、双指缩放，两个手势打架必输。
+                    VStack(spacing: 8) {
+                        selectionBar
+                        // 原文卡固定高度（切句不跳），句子长了在卡片里自己滚，不会被截断
+                        sentenceCard(s)
+                            .frame(height: cardHeight)
+                            .padding(.horizontal, T.side)
+                        if !vm.chunks.isEmpty {
+                            ScrollView { chunkRow }
+                                .frame(height: chunkHeight)
+                                .scrollIndicators(.hidden)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())      // 空白处也能滑，不用非按在字上
+                    .simultaneousGesture(swipeToStep)
+                    .overlay {
+                        if let h = stepHint {
+                            Text(h)
+                                .font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(Color.black.opacity(0.55))
+                                .clipShape(Capsule())
+                                .transition(.opacity)
+                                .allowsHitTesting(false)
+                        }
                     }
                 }
                 .padding(.top, 6)
@@ -139,14 +162,11 @@ struct DrillScreen: View {
         }
     }
 
-    /// 顶栏：34 点高的一条，图标全收小 —— 手机上这些是"偶尔点一下"的东西
-    /// 顶栏：左右各一个翻句键，中间点一下开整句列表，右边只留两个 —— 其余进菜单。
-    /// 手机上顶栏是"偶尔点"的地方，塞满图标既丑又容易误触。
+    /// 顶栏只回答一个问题："我现在在练哪个词的第几句"。
+    /// 常用的切句、选句子一律不放这儿 —— 6.5 寸屏单手够不到顶部，
+    /// 走路时更别提。它们在底部拇指区，见 transport。
     private var header: some View {
         HStack(spacing: 2) {
-            Button { step(-1) } label: { Image(systemName: "chevron.left") }
-                .buttonStyle(IconButton())
-
             Button { showList = true } label: {
                 HStack(spacing: 5) {
                     Text(store.word).font(.system(size: 15, weight: .semibold)).lineLimit(1)
@@ -156,7 +176,7 @@ struct DrillScreen: View {
                         .foregroundStyle(.secondary)
                     if vm.loading { ProgressView().controlSize(.mini) }
                 }
-                .padding(.horizontal, 8).frame(height: 34)
+                .padding(.horizontal, 6).frame(height: 34)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -177,9 +197,6 @@ struct DrillScreen: View {
                     .foregroundStyle(volKeys ? Color.accentColor : Color.primary.opacity(0.55))
                     .frame(width: 40, height: 34)
             }
-
-            Button { step(1) } label: { Image(systemName: "chevron.right") }
-                .buttonStyle(IconButton())
         }
         .padding(.horizontal, T.side - 4)
         .frame(height: 38)
@@ -381,10 +398,12 @@ struct DrillScreen: View {
         .buttonStyle(.plain)
     }
 
-    /// 底部：一个大圆键管播放，其余中性小键；倍速用分段控件，一眼看清当前档
+    /// 底部＝拇指区，所有高频动作都在这儿：
+    /// 上一句 / 播放 / 下一句 三个大键并排，下面一行是"第几句（点开列表）"和倍速。
+    /// 收藏、难点这些次高频的收成小图标排在右边，尺寸压到 36 保证 SE 也塞得下。
     private var transport: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 22))
@@ -417,18 +436,24 @@ struct DrillScreen: View {
                 Button { Task { await vm.toggleMark() } } label: { Image(systemName: "flag") }
                     .buttonStyle(IconButton(on: !vm.marks.isEmpty))
 
-                Button { vm.nextMark() } label: { Image(systemName: "arrow.right.to.line") }
-                    .buttonStyle(IconButton())
-                    .disabled(vm.marks.isEmpty).opacity(vm.marks.isEmpty ? 0.35 : 1)
-
-                if rec.hasTake {
-                    Button { rec.playAB(range: vm.selection) } label: {
-                        Image(systemName: "arrow.left.arrow.right")
-                    }
-                    .buttonStyle(IconButton())
-                }
             }
-            Picker("", selection: Binding(
+            HStack(spacing: T.gap) {
+                // 选句子：以前在顶栏，够不着 —— 挪到这儿，跟倍速同一行，不多占高度
+                Button { showList = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "list.bullet").font(.system(size: 12))
+                        Text("\(store.index + 1)/\(store.items.count)")
+                            .font(.system(size: 13, weight: .medium)).monospacedDigit()
+                        Image(systemName: "chevron.up").font(.system(size: 9))
+                    }
+                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .padding(.horizontal, 10).frame(height: 32)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Picker("", selection: Binding(
                 get: { Double(player.rate) },
                 set: { player.rate = Float($0); if player.isPlaying { player.play() } })) {
                 Text("1.0x").tag(1.0)
@@ -436,7 +461,8 @@ struct DrillScreen: View {
                 Text("0.6x").tag(0.6)
                 Text("0.5x").tag(0.5)
             }
-            .pickerStyle(.segmented)
+                .pickerStyle(.segmented)
+            }
             .padding(.horizontal, T.side)
         }
         .padding(.top, 8).padding(.bottom, 6)
@@ -620,6 +646,17 @@ struct DrillScreen: View {
     }
     /// 首尾相接：最后一句再往下就回到第一句，反之亦然 ——
     /// 走路时用音量键连着切，卡在最后一句上就得掏手机，不能这样。
+    /// 左右滑＝切句。往左滑下一句、往右滑上一句，跟翻书一个方向。
+    /// 判定要横向明显压过纵向：卡片里上下滚长句子时不能被误判成切句。
+    private var swipeToStep: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { g in
+                let dx = g.translation.width, dy = g.translation.height
+                guard abs(dx) > 48, abs(dx) > abs(dy) * 1.5 else { return }
+                step(dx < 0 ? 1 : -1)
+            }
+    }
+
     private func step(_ d: Int) {
         let n = store.items.count
         guard n > 0 else { return }
@@ -627,9 +664,15 @@ struct DrillScreen: View {
         guard i != store.index else { return }
         player.pause()
         store.index = i
-        flash = nil
         showText = true
         rec.reset()
+        // 滑动切句没有按钮按下去那种手感，得给点回应：震一下 + 中间闪一下第几句
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let h = "\(i + 1) / \(n)"
+        withAnimation(.easeOut(duration: 0.12)) { stepHint = h }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            withAnimation(.easeIn(duration: 0.25)) { if stepHint == h { stepHint = nil } }
+        }
     }
     /// 一段播完 → 等"换下一句之前"这个间隔 → 再跳。
     /// 中途要是切了句或停了播，这次回调作废（拿当时那句的地址对一下就知道）。
