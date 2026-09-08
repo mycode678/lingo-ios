@@ -30,11 +30,13 @@ struct DrillScreen: View {
     @AppStorage("drill.times") private var loopTimes = 0
     @AppStorage("drill.snap") private var snap = true
     @AppStorage("drill.autoAB") private var autoAB = true
-    @AppStorage("drill.showDef") private var showDef = false        // 英文释义
-    @AppStorage("drill.showDcn") private var showDcn = false        // 中文释义
+    // 这三个默认开着：释义摆在眼前才知道这句话为什么这么说，
+    // 高频增强让辅音听得清（本来就是拿来抠听力的）。不想要就在设置里关。
+    @AppStorage("drill.showDef") private var showDef = true         // 英文释义
+    @AppStorage("drill.showDcn") private var showDcn = true         // 中文释义
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
-    @AppStorage("drill.boostHF") private var boostHF = false        // 听辅音（高频增强）
+    @AppStorage("drill.boostHF") private var boostHF = true         // 听辅音（高频增强）
     /// 倍速档位自己定：慢到 0.4 快到 2.0，几档也自己定（2~5 档）。
     /// 存成一串逗号分隔的数，简单、好迁移；解析不出来就退回默认四档。
     @AppStorage("drill.rates") private var ratesCSV = "1.0,0.75,0.6,0.5"
