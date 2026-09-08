@@ -33,6 +33,7 @@ struct DrillScreen: View {
     @AppStorage("drill.autoAB") private var autoAB = true
     @AppStorage("drill.showDef") private var showDef = false
     @AppStorage("drill.volKeys") private var volKeys = false
+    @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
 
     @State private var showText = true
     @State private var showWalk = false
@@ -92,6 +93,8 @@ struct DrillScreen: View {
             showText = true
             flash = nil
             wireVolumeKeys()
+            // 切到一句就自动响。走路时用音量键切句、屏幕黑着，不自动播等于没法用。
+            if autoPlay { player.play(from: vm.selection?.lowerBound ?? 0) }
         }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
         .onDisappear {
@@ -378,6 +381,7 @@ struct DrillScreen: View {
         NavigationStack {
             Form {
                 Section("播放") {
+                    Toggle("切到一句就自动播放", isOn: $autoPlay)
                     Toggle("一段播完自动下一句", isOn: $autoNext)
                     Picker("循环间隔", selection: $gapIn) {
                         ForEach([0.3, 0.5, 0.8, 1.2, 2.0], id: \.self) {
