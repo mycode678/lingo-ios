@@ -69,16 +69,8 @@ struct ReviewScreen: View {
                         }
                         .frame(maxWidth: .infinity)
                         .card(TX.color(cardBg))
-                        // 跟精听台一个手感：左右滑就换上下句，往左滑是下一张
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 20)
-                                .onEnded { g in
-                                    let dx = g.translation.width, dy = g.translation.height
-                                    guard abs(dx) > 48, abs(dx) > abs(dy) * 1.5 else { return }
-                                    dx < 0 ? next() : prev()
-                                }
-                        )
+
+                        Spacer(minLength: 8)      // 控件一律沉到下半屏（单手够得到）
 
                         HStack(spacing: 14) {
                             Button { player.isPlaying ? player.pause() : replay() } label: {
@@ -89,17 +81,10 @@ struct ReviewScreen: View {
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
-                            // 点＝开关循环，长按＝循环几遍（跟精听台同一个面板）
-                            Button { player.loop.toggle(); if player.loop { replay() } } label: {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "repeat")
-                                    if player.loop && loopTimes > 0 {
-                                        Text("\(loopTimes)").font(.system(size: 10, weight: .semibold))
-                                    }
-                                }
-                            }
-                            .buttonStyle(IconButton(on: player.loop))
-                            .onLongPressGesture(minimumDuration: 0.4) { showLoop = true }
+                            // 点＝开关循环，按住 0.5 秒＝选循环几遍
+                            LoopButton(player: player, times: loopTimes,
+                                       onToggle: { player.loop.toggle(); if player.loop { replay() } },
+                                       onHold: { showLoop = true })
                             Button { toDrill(card!) } label: { Image(systemName: "waveform") }
                                 .buttonStyle(IconButton())
                             // 下一张不再放按钮：左右滑就行，跟精听台一致
@@ -125,9 +110,19 @@ struct ReviewScreen: View {
                         } else {
                             Text("左右滑动换上下句").font(.caption2).foregroundStyle(.tertiary)
                         }
-                        Spacer()
                     }
                     .padding(18)
+                    // 整屏任意地方左右滑都能换上下句 —— 手指停在下半屏就能操作，
+                    // 不用够到卡片那么高的地方。往左滑是下一张。
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { g in
+                                let dx = g.translation.width, dy = g.translation.height
+                                guard abs(dx) > 48, abs(dx) > abs(dy) * 1.5 else { return }
+                                dx < 0 ? next() : prev()
+                            }
+                    )
                 } else {
                     ContentUnavailableView("今天没有到期的了",
                         systemImage: "checkmark.circle",

@@ -135,3 +135,33 @@ struct LoopSheet: View {
         .presentationDetents([.height(400)])
     }
 }
+
+
+/// 循环键：点一下开关循环，**按住 0.5 秒**弹出"循环几遍"。
+///
+/// 别把 .onLongPressGesture 挂在 Button 上 —— 按钮自己会吃掉长按，
+/// 结果变成"按住再挪一下手指"才触发，谁也猜不到（2026-09-08 就这么翻过车）。
+/// 0.5 秒是 iOS 系统级长按的时长，手感跟别的 App 一致。
+struct LoopButton: View {
+    @ObservedObject var player: Player
+    var times: Int
+    var onToggle: () -> Void
+    var onHold: () -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "repeat")
+            if player.loop && times > 0 {
+                Text("\(times)").font(.system(size: 10, weight: .semibold))
+            }
+        }
+        .font(.system(size: 15))
+        .foregroundStyle(player.loop ? Color.accentColor : Color.primary.opacity(0.55))
+        .frame(width: 44, height: 34)
+        .background(player.loop ? Color.accentColor.opacity(0.14) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
+        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 30, perform: onHold)
+    }
+}

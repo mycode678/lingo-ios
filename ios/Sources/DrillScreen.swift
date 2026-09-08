@@ -243,16 +243,9 @@ struct DrillScreen: View {
             .buttonStyle(LabelButton())
             .disabled(vm.selection == nil).opacity(vm.selection == nil ? 0.35 : 1)
 
-            Button { player.loop.toggle(); player.loop ? player.play() : player.pause() } label: {
-                HStack(spacing: 2) {
-                    Image(systemName: "repeat")
-                    if player.loop && loopTimes > 0 {
-                        Text("\(loopTimes)").font(.system(size: 10, weight: .semibold))
-                    }
-                }
-            }
-            .buttonStyle(IconButton(on: player.loop))
-            .onLongPressGesture(minimumDuration: 0.4) { showLoop = true }
+            LoopButton(player: player, times: loopTimes,
+                       onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
+                       onHold: { showLoop = true })
 
             Button { showGap = true } label: {
                 HStack(spacing: 3) {
@@ -514,7 +507,7 @@ struct DrillScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture(perform: tap)
-            .onLongPressGesture(minimumDuration: 0.4, perform: hold)
+            .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 30, perform: hold)
     }
 
     private func setRate(_ i: Int, _ v: Double) {
@@ -706,16 +699,9 @@ struct DrillScreen: View {
                 .opacity(vm.selection == nil ? 0.35 : 1)
 
                 // 点＝开关循环，长按＝选循环几遍
-                Button { player.loop.toggle(); player.loop ? player.play() : player.pause() } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: "repeat")
-                        if player.loop && loopTimes > 0 {
-                            Text("\(loopTimes)").font(.system(size: 10, weight: .semibold))
-                        }
-                    }
-                }
-                .buttonStyle(IconButton(on: player.loop))
-                .onLongPressGesture(minimumDuration: 0.4) { showLoop = true }
+                LoopButton(player: player, times: loopTimes,
+                           onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
+                           onHold: { showLoop = true })
 
                 Button {
                     rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
