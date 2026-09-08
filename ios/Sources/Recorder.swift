@@ -32,13 +32,24 @@ final class Recorder: NSObject, ObservableObject {
         wrongWords = ["museum"]
         score = Score(words: 88, tone: 76, rhythm: 81)
         message = "听写来自本机识别，只作参考"
-        takePCM = (0..<24000).map { i in                    // 1.5 秒的假波形，好看"我的录音"那条轨
-            Float(sin(Double(i) / 40) * 0.35 * abs(sin(Double(i) / 3000)))
+        // 1.5 秒的假波形，好看"我的录音"那条轨。
+        // 写成一行 map 会让 Swift 类型检查器超时（编译报 unable to type-check），拆开写。
+        var pcm = [Float](); pcm.reserveCapacity(24000)
+        for i in 0..<24000 {
+            let carrier: Double = sin(Double(i) / 40.0)
+            let envelope: Double = abs(sin(Double(i) / 3000.0))
+            pcm.append(Float(carrier * 0.35 * envelope))
         }
+        takePCM = pcm
         let n = 60
-        curve = (nat: (0..<n).map { 120 + 40 * sin(Double($0) / 6) },
-                 mine: (0..<n).map { 118 + 46 * sin(Double($0) / 5.4) },
-                 rms: (0..<n).map { abs(sin(Double($0) / 4)) })
+        var nat = [Double](), mine = [Double?](), rms = [Double]()
+        for i in 0..<n {
+            let x = Double(i)
+            nat.append(120.0 + 40.0 * sin(x / 6.0))
+            mine.append(118.0 + 46.0 * sin(x / 5.4))
+            rms.append(abs(sin(x / 4.0)))
+        }
+        curve = (nat: nat, mine: mine, rms: rms)
         hasTake = true
     }
 
