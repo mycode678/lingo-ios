@@ -557,8 +557,12 @@ struct DrillScreen: View {
         vk.onDown = { step(1) }
         vk.enable(volKeys)
     }
+    /// 首尾相接：最后一句再往下就回到第一句，反之亦然 ——
+    /// 走路时用音量键连着切，卡在最后一句上就得掏手机，不能这样。
     private func step(_ d: Int) {
-        let i = max(0, min(store.items.count - 1, store.index + d))
+        let n = store.items.count
+        guard n > 0 else { return }
+        let i = ((store.index + d) % n + n) % n
         guard i != store.index else { return }
         player.pause()
         store.index = i
