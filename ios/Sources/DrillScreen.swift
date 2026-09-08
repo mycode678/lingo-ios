@@ -365,7 +365,6 @@ struct DrillScreen: View {
                 transport
             }
             .frame(width: geo.size.width)
-        }
     }
 
     /// 顶栏只回答一个问题："我现在在练哪个词的第几句"。
@@ -1007,10 +1006,7 @@ struct DrillScreen: View {
         np.title = s.en
         np.subtitle = store.word + (s.gnum.map { " · " + $0 } ?? "")
         np.blind = false
-        // 练的时候按锁屏/耳机上的播放键，想要的是"再听一遍"，不是暂停 ——
-        // 所以这个键一律重放当前这句（有选区就从选区头），暂停留给控制中心那个暂停键。
-        np.onToggle = { player.play(from: vm.selection?.lowerBound ?? 0) }
-        np.onPause = { player.pause() }
+        np.onToggle = { player.toggle() }        // 播放/暂停，跟屏幕上那个键一个行为
         np.onNext = { step(1) }
         np.onPrev = { step(-1) }
         np.onReplay = { player.play(from: vm.selection?.lowerBound ?? 0) }
