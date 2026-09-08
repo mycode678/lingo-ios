@@ -148,18 +148,19 @@ struct DrillScreen: View {
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         VStack(spacing: 6) {
             header
-            waveBlock
-                .frame(minHeight: 120, maxHeight: .infinity)
+            waveBlock                                   // 横屏的主角，能占多少占多少
+                .frame(minHeight: 150, maxHeight: .infinity)
                 .padding(.horizontal, T.side)
             selectionBar
-            sentenceCard(s)
-                .frame(height: min(max(72, cardHeight), geo.size.height * 0.3))
+            sentenceCard(s)                             // 原文最多占三成高，剩下全给波形
+                .frame(height: min(max(66, cardHeight), geo.size.height * 0.26))
                 .padding(.horizontal, T.side)
                 .contentShape(Rectangle())
                 .simultaneousGesture(swipeToStep)
             landscapeBar
             gradeRow
         }
+        .padding(.bottom, 2)
         .overlay {
             if let h = stepHint {
                 Text(h)

@@ -34,7 +34,6 @@ struct LingoApp: App {
                     .rotationEffect(.degrees(90))
                     .position(x: g.size.width / 2, y: g.size.height / 2)
             }
-            .ignoresSafeArea()
         } else {
             root
         }
