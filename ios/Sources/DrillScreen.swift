@@ -72,13 +72,14 @@ struct DrillScreen: View {
                 header
                 // 位置钉死：波形、原文、小句各占固定高度，换句子时谁都不动。
                 // 内容多了在自己那一块里滚，不许把别人挤上挤下（切句时整屏乱跳就是这么来的）。
+                // 高度不手算：波形当弹性件，剩多少占多少（最少 88）。
+                // 手算常数在小屏上必然算错 —— SE 上底部控制条被标签栏压住就是这么来的。
                 VStack(spacing: 8) {
-                    Spacer(minLength: 0).frame(height: 10)
-                    waveBlock(height: waveHeight(geo.size.height))
+                    waveBlock
+                        .frame(minHeight: 88, maxHeight: .infinity)
                         .padding(.horizontal, T.side)
                     selectionBar
-                    // 原文卡吃掉剩下的空间：对同一部手机是固定高度（切句不跳），
-                    // 句子长了在卡片里自己滚，不会被截断
+                    // 原文卡固定高度（切句不跳），句子长了在卡片里自己滚，不会被截断
                     sentenceCard(s)
                         .frame(height: cardHeight)
                         .padding(.horizontal, T.side)
@@ -87,9 +88,10 @@ struct DrillScreen: View {
                             .frame(height: chunkHeight)
                             .scrollIndicators(.hidden)
                     }
-                    Spacer(minLength: 0)          // 富余的空间留在最下面，不摊在卡片里
                 }
+                .padding(.top, 6)
                 .frame(width: geo.size.width)
+                .frame(maxHeight: .infinity)
                 // 录完之后的结果单独浮一层，不动上面的布局
                 .overlay(alignment: .bottom) {
                     if rec.hasTake {
@@ -183,16 +185,10 @@ struct DrillScreen: View {
         .frame(height: 38)
     }
 
-    /// 中间区大约是屏高减掉上下固定部分；波形最多 190，小屏和横屏按比例缩
-    private func waveHeight(_ screenH: CGFloat) -> CGFloat {
-        let mid = max(120, screenH - 34 - 46 - 100 - 49)
-        return min(190, max(96, mid * 0.45))
-    }
-
-    private func waveBlock(height: CGFloat) -> some View {
+    private var waveBlock: some View {
         VStack(spacing: 4) {
             WaveView(vm: vm)
-                .frame(height: height)
+                .frame(maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: T.card, style: .continuous))
             HStack(spacing: 8) {
                 if let sel = vm.selection {
