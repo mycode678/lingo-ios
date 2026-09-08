@@ -83,11 +83,14 @@ final class DrillModel: ObservableObject {
     @Published var snap = true
     @Published var loading = false
     @Published var note = ""
+    /// 记住每句自己圈过的那一小段：切走再回来还是练它，而不是从整句重来
+    @Published var rememberSelection = true
     private var src = ""
 
     func load(_ s: Api.Sentence) async {
         guard src != s.src else { return }
         src = s.src
+        let saved = rememberSelection ? Self.savedSelection(s.src) : nil
         loading = true; note = ""
         selection = nil; words = []; marks = []; chunks = []
         do {
@@ -98,6 +101,11 @@ final class DrillModel: ObservableObject {
                 words = try await Api.align(s.src)
                 chunks = Self.cutChunks(words)
                 if words.isEmpty { note = "服务器还没切好这句的词" }
+            if let sv = saved, sv.upperBound <= Player.shared.duration + 0.01 {
+                selection = sv
+                Player.shared.setSegment(sv, playNow: false)
+                note = "沿用上次圈的那一段"
+            }
             } catch {
                 // 出了问题要说清是哪一步，不然只能靠猜（第一版就吃了这个亏）
                 note = "取词边界失败：\(error.localizedDescription)"
@@ -116,6 +124,20 @@ final class DrillModel: ObservableObject {
             selection = nil
             Player.shared.setSegment(nil, playNow: false)
         }
+        Self.saveSelection(src, selection)
+    }
+
+    // 选区记在本地（按音频地址存），重开 App 也还在
+    private static func key(_ src: String) -> String { "sel." + src }
+    static func savedSelection(_ src: String) -> ClosedRange<Double>? {
+        guard let a = UserDefaults.standard.array(forKey: key(src)) as? [Double],
+              a.count == 2, a[1] > a[0] else { return nil }
+        return a[0]...a[1]
+    }
+    static func saveSelection(_ src: String, _ r: ClosedRange<Double>?) {
+        guard !src.isEmpty else { return }
+        if let r { UserDefaults.standard.set([r.lowerBound, r.upperBound], forKey: key(src)) }
+        else { UserDefaults.standard.removeObject(forKey: key(src)) }
     }
     func selectChunk(_ i: Int) {
         guard chunks.indices.contains(i), !words.isEmpty else { return }

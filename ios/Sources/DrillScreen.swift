@@ -1,37 +1,54 @@
 import SwiftUI
 
-/// 精听台。手机屏就那么大，排布按"用的频率"来，从上到下：
-///   波形（全宽，顶到边）→ 选区微调 → 原文/译文（一眼能看到，不用滚）→ 小句 →
-///   录音结果（录完才出现）→ 打分
-/// 播放控制钉在底部不动，上下句按钮贴着波形，都不用滚就够得到。
+/// 精听台（手机思维：拇指够得到的地方放常用的，一次性设置全收进抽屉）
+///
+/// 屏幕从上到下：极窄的顶栏 → **波形和原文居中**（拇指自然落点）→ 打分 → 播放控制。
+/// 顶部只放"偶尔点一下"的图标，且都收小；底部放"一直要点"的大按钮。
+///
+/// 宽度上有个坑：SwiftUI 的竖列宽度＝最宽那个子视图的理想宽度。选区那排按钮一多，
+/// 理想宽度就超过屏宽，整列被撑出去，波形和文字左右都被切掉（21.png 就是这么来的）。
+/// 所以这里把宽度锁死在容器上，放不下的横排自己滚。
 struct DrillScreen: View {
     @EnvironmentObject var store: Store
     @EnvironmentObject var player: Player
     @StateObject private var vm = DrillModel()
     @StateObject private var rec = Recorder.shared
+    @Environment(\.colorScheme) private var systemScheme
 
+    // 外观
+    @AppStorage("ui.scheme") private var scheme = "system"
     @AppStorage("ui.sentFont") private var sentFont = 21.0
-    @AppStorage("drill.autoNext") private var autoNext = false      // 一段播完自动下一句
-    @AppStorage("drill.gapIn") private var gapIn = 0.8              // 循环时两遍之间停多久
-    @AppStorage("drill.times") private var loopTimes = 0            // 循环几遍，0=一直
-    @AppStorage("drill.snap") private var snap = true               // 拖选区吸到词边
-    @AppStorage("drill.autoAB") private var autoAB = true           // 录完自动对比播放
-    @AppStorage("drill.showDef") private var showDef = false        // 英文释义默认收起，小屏放不下
-    @AppStorage("drill.volKeys") private var volKeys = false        // 音量键切上下句
+    @AppStorage("ui.sentFace") private var sentFace = "system"
+    @AppStorage("ui.sentColor") private var sentColor = ""          // 空＝跟随主题
+    @AppStorage("ui.cnFont") private var cnFont = 16.0
+    @AppStorage("ui.cnFace") private var cnFace = "system"
+    @AppStorage("ui.cnColor") private var cnColor = ""
+    @AppStorage("ui.cardBg") private var cardBg = ""
+
+    // 行为
+    @AppStorage("drill.autoNext") private var autoNext = false
+    @AppStorage("drill.gapIn") private var gapIn = 0.8
+    @AppStorage("drill.times") private var loopTimes = 0
+    @AppStorage("drill.snap") private var snap = true
+    @AppStorage("drill.autoAB") private var autoAB = true
+    @AppStorage("drill.showDef") private var showDef = false
+    @AppStorage("drill.volKeys") private var volKeys = false
 
     @State private var showText = true
     @State private var showWalk = false
     @State private var showMore = false
-    @State private var flash: String?          // 一闪而过的提示，不常驻占地方
+    @State private var showStyle = false
+    @State private var flash: String?
 
     var body: some View {
         NavigationStack {
             Group {
                 if let s = store.current { content(s) } else { empty }
             }
-            .toolbar(.hidden, for: .navigationBar)     // 手机上这 44 点留给波形更值
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showWalk) { WalkScreen(startSegment: vm.selection) }
             .sheet(isPresented: $showMore) { settingsSheet }
+            .sheet(isPresented: $showStyle) { styleSheet }
         }
     }
 
@@ -40,30 +57,37 @@ struct DrillScreen: View {
             description: Text("去「查词」点一条例句，或者去「复习」拿今天到期的。"))
     }
 
+    // MARK: - 主体
+
     private func content(_ s: Api.Sentence) -> some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 10) {
-                    waveBlock(s)              // 波形：全宽顶边
-                    selectionBar
-                    sentenceCard(s)           // 原文译文紧跟波形，一眼能看到
-                    if !vm.chunks.isEmpty { chunkRow }
-                    if rec.hasTake { takeBlock }
-                    gradeRow(s)
-                    Color.clear.frame(height: 8)
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                header
+                ScrollView {
+                    VStack(spacing: 10) {
+                        Spacer(minLength: 0)                    // 上下弹簧把主块顶到屏幕中间
+                        waveBlock
+                        selectionBar
+                        sentenceCard(s)
+                        if !vm.chunks.isEmpty { chunkRow }
+                        if rec.hasTake { takeBlock }
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: max(200, geo.size.height - 160))
+                    .frame(width: geo.size.width)               // 宽度锁死，谁也别把它撑出去
                 }
-                .padding(.bottom, 6)
+                .scrollIndicators(.hidden)
+                gradeRow
+                transport
             }
-            transport                          // 钉在底部
+            .frame(width: geo.size.width)
         }
         .task(id: s.src) {
             await vm.load(s)
             vm.snap = snap
             player.gapIn = gapIn
             player.loopTimes = loopTimes
-            // 一段播完之后干什么，由这一屏说了算 —— 随身模式也会设这个回调，
-            // 不接管的话精听台会莫名其妙自己跳下一句（踩过）
-            player.onSegmentEnd = { advanceIfWanted() }
+            player.onSegmentEnd = { if autoNext { step(1) } }
             rec.reset()
             showText = true
             flash = nil
@@ -72,125 +96,136 @@ struct DrillScreen: View {
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
         .onDisappear {
             player.onSegmentEnd = nil
-            VolumeKeys.shared.enable(false)      // 离开这一屏就把音量键还给系统
+            VolumeKeys.shared.enable(false)          // 离开就把音量键还给系统
         }
     }
 
-    // MARK: - 波形块
+    /// 顶栏：34 点高的一条，图标全收小 —— 手机上这些是"偶尔点一下"的东西
+    private var header: some View {
+        HStack(spacing: 4) {
+            iconButton("chevron.left", disabled: store.index == 0) { step(-1) }
+            Text(store.word).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+            Text("\(store.index + 1)/\(store.items.count)")
+                .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+            if vm.loading { ProgressView().controlSize(.mini) }
+            Spacer(minLength: 4)
+            iconButton(volKeys ? "volume.2.fill" : "volume.slash", on: volKeys) { volKeys.toggle() }
+            iconButton(scheme == "system" ? "circle.lefthalf.filled"
+                       : (scheme == "light" ? "sun.max" : "moon")) { cycleScheme() }
+            iconButton("textformat") { showStyle = true }
+            iconButton("headphones") { showWalk = true }
+            iconButton("slider.horizontal.3") { showMore = true }
+            iconButton("chevron.right", disabled: store.index >= store.items.count - 1) { step(1) }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 34)
+    }
+    private func iconButton(_ name: String, on: Bool = false, disabled: Bool = false,
+                            _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Image(systemName: name)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 30, height: 26)
+                .background(on ? Color.accentColor : Color(.secondarySystemBackground))
+                .foregroundStyle(on ? Color.white : (disabled ? Color.secondary : Color.accentColor))
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
+    }
 
-    private func waveBlock(_ s: Api.Sentence) -> some View {
-        VStack(spacing: 0) {
-            // 上下句就贴在波形上沿，不用滚到顶
-            HStack(spacing: 6) {
-                Button { step(-1) } label: {
-                    Image(systemName: "chevron.left").frame(width: 42, height: 32)
-                }
-                .buttonStyle(.bordered).disabled(store.index == 0)
-                Text(store.word).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                Text("\(store.index + 1)/\(store.items.count)")
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                if vm.loading { ProgressView().controlSize(.small) }
-                Spacer()
-                Button { volKeys.toggle() } label: {
-                    Image(systemName: volKeys ? "volume.2.fill" : "volume.slash")
-                        .frame(width: 38, height: 32)
-                }
-                .prominent(volKeys)
-                Button { showWalk = true } label: {
-                    Image(systemName: "headphones").frame(width: 38, height: 32)
-                }.buttonStyle(.bordered)
-                Button { showMore = true } label: {
-                    Image(systemName: "slider.horizontal.3").frame(width: 38, height: 32)
-                }.buttonStyle(.bordered)
-                Button { step(1) } label: {
-                    Image(systemName: "chevron.right").frame(width: 42, height: 32)
-                }
-                .buttonStyle(.bordered).disabled(store.index >= store.items.count - 1)
-            }
-            .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 5)
-
-            WaveView(vm: vm)
-                .frame(height: 200)
-                .frame(maxWidth: .infinity)      // 顶满宽度，手机上寸土寸金
-
+    private var waveBlock: some View {
+        VStack(spacing: 3) {
+            WaveView(vm: vm).frame(height: 190)
             HStack(spacing: 8) {
                 if let sel = vm.selection {
                     Text(String(format: "选区 %.2f–%.2fs", sel.lowerBound, sel.upperBound))
                         .monospacedDigit().foregroundStyle(Color.accentColor)
                 }
                 if !vm.marks.isEmpty { Text("难点\(vm.marks.count)").foregroundStyle(.red) }
-                Spacer()
-                if let t = flash { Text(t).foregroundStyle(.secondary) }
+                Spacer(minLength: 0)
+                if let t = flash { Text(t).foregroundStyle(.secondary).lineLimit(1) }
                 else if !vm.note.isEmpty { Text(vm.note).foregroundStyle(.secondary).lineLimit(1) }
             }
-            .font(.caption)
-            .padding(.horizontal, 10).padding(.top, 4)
-            .frame(height: 16)
+            .font(.system(size: 11))
+            .padding(.horizontal, 10)
+            .frame(height: 14)
         }
     }
 
-    /// 选区微调：手指点按钮比拖手柄准
+    /// 放不下就横向滚，绝不撑宽整屏
     private var selectionBar: some View {
-        HStack(spacing: 5) {
-            Button("设A") { vm.setEdgeAtHead("a") }
-            Button("A−") { vm.nudge("a", -0.08) }
-            Button("A+") { vm.nudge("a", 0.08) }
-            Button("B−") { vm.nudge("b", -0.08) }
-            Button("B+") { vm.nudge("b", 0.08) }
-            Button("设B") { vm.setEdgeAtHead("b") }
-            Divider().frame(height: 22)
-            Button {
-                vm.setSelection(a: nil, b: nil, play: false); vm.zoomAll()
-            } label: { Image(systemName: "xmark") }
-            Button { vm.zoomToSelection() } label: { Image(systemName: "arrow.left.and.right") }
-                .disabled(vm.selection == nil)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                small("设A") { vm.setEdgeAtHead("a") }
+                small("A−") { vm.nudge("a", -0.08) }
+                small("A+") { vm.nudge("a", 0.08) }
+                small("B−") { vm.nudge("b", -0.08) }
+                small("B+") { vm.nudge("b", 0.08) }
+                small("设B") { vm.setEdgeAtHead("b") }
+                Divider().frame(height: 20)
+                small("整句") { vm.setSelection(a: nil, b: nil, play: false); vm.zoomAll() }
+                small("放满") { vm.zoomToSelection() }
+            }
+            .padding(.horizontal, 10)
         }
-        .font(.system(size: 13))
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .padding(.horizontal, 8)
+        .frame(height: 34)
+    }
+    private func small(_ t: String, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Text(t).font(.system(size: 12.5))
+                .padding(.horizontal, 11).frame(height: 30)
+                .background(Color(.secondarySystemBackground))
+                .foregroundStyle(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func sentenceCard(_ s: Api.Sentence) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(s.en)
-                .font(.system(size: sentFont))
+                .font(face(sentFace, sentFont))
+                .foregroundStyle(color(sentColor) ?? Color.primary)
                 .blur(radius: showText ? 0 : 9)
                 .animation(.easeInOut(duration: 0.16), value: showText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { showText.toggle() }
             if let cn = s.cn, !cn.isEmpty {
-                Text(cn).font(.system(size: sentFont - 5)).foregroundStyle(.secondary)
+                Text(cn)
+                    .font(face(cnFace, cnFont))
+                    .foregroundStyle(color(cnColor) ?? Color.secondary)
                     .blur(radius: showText ? 0 : 9)
             }
             if showDef, let d = s.dfe, !d.isEmpty {
-                Text(d).font(.system(size: sentFont - 7)).foregroundStyle(.tertiary)
+                Text(d).font(.system(size: max(11, cnFont - 3))).foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(color(cardBg) ?? Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 8)
     }
 
     private var chunkRow: some View {
-        FlowLayout(spacing: 7) {
+        FlowLayout(spacing: 6) {
             ForEach(Array(vm.chunks.enumerated()), id: \.offset) { i, c in
                 let a = vm.words[c.0].s, b = vm.words[c.1].e
                 let on = vm.selection.map { abs($0.lowerBound - a) < 0.02 && abs($0.upperBound - b) < 0.02 } ?? false
                 Button { vm.selectChunk(i) } label: {
                     HStack(spacing: 5) {
                         Text(vm.words[c.0...c.1].map(\.w).joined(separator: " ")).lineLimit(1)
-                        Text(String(format: "%.1fs", b - a)).font(.caption2).foregroundStyle(.secondary)
+                        Text(String(format: "%.1f", b - a)).font(.system(size: 10)).foregroundStyle(.secondary)
                     }
-                    .font(.system(size: 14))
-                    .padding(.horizontal, 11).padding(.vertical, 9)
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 10).padding(.vertical, 8)
                     .background(on ? Color.accentColor.opacity(0.16) : Color(.secondarySystemBackground))
-                    .overlay(RoundedRectangle(cornerRadius: 10)
+                    .overlay(RoundedRectangle(cornerRadius: 9)
                         .stroke(on ? Color.accentColor : .clear, lineWidth: 1.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -198,63 +233,53 @@ struct DrillScreen: View {
         .padding(.horizontal, 8)
     }
 
-    /// 录完之后才出现：听自己的、对比、机器听写、三个分数
     private var takeBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Button { rec.playMine(range: vm.selection) } label: {
-                    Label("我的", systemImage: "person.wave.2").frame(maxWidth: .infinity, minHeight: 40)
-                }.buttonStyle(.bordered)
-                Button { rec.playAB(range: vm.selection) } label: {
-                    Label("对比连播", systemImage: "arrow.left.arrow.right").frame(maxWidth: .infinity, minHeight: 40)
-                }.buttonStyle(.bordered)
-            }
+        VStack(alignment: .leading, spacing: 8) {
             if let h = rec.heard, !h.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("机器听写").font(.caption).foregroundStyle(.secondary)
-                    Text(rec.heardAttributed).font(.system(size: 16))
-                    if !rec.wrongWords.isEmpty {
-                        Text("问题词：" + rec.wrongWords.joined(separator: " / "))
-                            .font(.caption).foregroundStyle(.orange)
-                    }
+                Text(rec.heardAttributed).font(.system(size: 15))
+                if !rec.wrongWords.isEmpty {
+                    Text("问题词：" + rec.wrongWords.joined(separator: " / "))
+                        .font(.system(size: 11)).foregroundStyle(.orange)
                 }
             }
             if let sc = rec.score {
-                HStack(spacing: 20) {
-                    scoreItem("词准确率", sc.words)
-                    scoreItem("语调相似", sc.tone)
-                    scoreItem("节奏相似", sc.rhythm)
+                HStack(spacing: 18) {
+                    scoreItem("词准确", sc.words)
+                    scoreItem("语调", sc.tone)
+                    scoreItem("节奏", sc.rhythm)
+                    Spacer()
+                    Button { rec.playMine(range: vm.selection) } label: {
+                        Label("我的", systemImage: "person.wave.2").font(.system(size: 12))
+                    }.buttonStyle(.bordered).controlSize(.small)
                 }
             }
-            if let m = rec.message { Text(m).font(.caption).foregroundStyle(.secondary) }
+            if let m = rec.message { Text(m).font(.system(size: 11)).foregroundStyle(.secondary) }
         }
-        .padding(12)
+        .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 8)
     }
     private func scoreItem(_ k: String, _ v: Int?) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             Text(v == nil ? "…" : "\(v!)")
-                .font(.system(size: 26, weight: .semibold)).monospacedDigit()
+                .font(.system(size: 21, weight: .semibold)).monospacedDigit()
                 .foregroundStyle(scoreColor(v))
-            Text(k).font(.caption2).foregroundStyle(.secondary)
+            Text(k).font(.system(size: 10)).foregroundStyle(.secondary)
         }
     }
-
-    /// 三元里混 .secondary（层级样式）和 .green（颜色）类型对不上，拆成函数
     private func scoreColor(_ v: Int?) -> Color {
         guard let v else { return .secondary }
         return v >= 75 ? .green : (v >= 55 ? .orange : .red)
     }
 
-    private func gradeRow(_ s: Api.Sentence) -> some View {
-        HStack(spacing: 7) {
+    private var gradeRow: some View {
+        HStack(spacing: 6) {
             grade(1, "没听懂", .red); grade(2, "勉强", .orange)
             grade(3, "会了", .blue); grade(4, "脱口而出", .green)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 8).padding(.bottom, 4)
     }
     private func grade(_ q: Int, _ t: String, _ c: Color) -> some View {
         Button {
@@ -269,77 +294,85 @@ struct DrillScreen: View {
                 if autoNext { step(1) }
             }
         } label: {
-            Text(t).font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 46)
+            Text(t).font(.system(size: 12.5)).lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: 42)
                 .background(c.opacity(0.14)).foregroundStyle(c)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - 底部常驻控制
-
     private var transport: some View {
-        VStack(spacing: 7) {
-            HStack(spacing: 8) {
-                Button { player.toggle() } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 21)).frame(width: 62, height: 48)
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                bigButton(player.isPlaying ? "pause.fill" : "play.fill", prominent: true, w: 56) {
+                    player.toggle()
                 }
-                .buttonStyle(.borderedProminent)
-                Button {
+                bigButton("repeat", on: player.loop) {
                     player.loop.toggle()
                     if player.loop { player.play() } else { player.pause() }
-                } label: {
-                    Image(systemName: "repeat").frame(width: 44, height: 48)
                 }
-                .prominent(player.loop)
-                Button {
+                bigButton(rec.isRecording ? "stop.fill" : "mic.fill",
+                          on: rec.isRecording, tint: .red) {
                     rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
                                     : rec.start()
-                } label: {
-                    Image(systemName: rec.isRecording ? "stop.fill" : "mic.fill")
-                        .frame(width: 44, height: 48)
                 }
-                .prominent(rec.isRecording)
-                .tint(rec.isRecording ? .red : nil)
-                Button { Task { await toggleFav() } } label: {
-                    Image(systemName: isFav ? "star.fill" : "star").frame(width: 44, height: 48)
-                }
-                .prominent(isFav)
+                bigButton(isFav ? "star.fill" : "star", on: isFav) { Task { await toggleFav() } }
                 ForEach([1.0, 0.75, 0.6, 0.5], id: \.self) { r in
+                    let on = abs(Double(player.rate) - r) < 0.01
                     Button {
                         player.rate = Float(r)
                         if player.isPlaying { player.play() }
                     } label: {
                         Text(r == 1.0 ? "1x" : String(format: "%.2g", r))
-                            .font(.system(size: 12)).frame(maxWidth: .infinity, minHeight: 48)
+                            .font(.system(size: 12))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(on ? Color.accentColor : Color(.secondarySystemBackground))
+                            .foregroundStyle(on ? Color.white : Color.accentColor)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     }
-                    .prominent(abs(Double(player.rate) - r) < 0.01)
+                    .buttonStyle(.plain)
                 }
             }
-            HStack(spacing: 7) {
-                Button { Task { await vm.toggleMark() } } label: {
-                    Label("标难点", systemImage: "flag").font(.system(size: 12.5))
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                }.buttonStyle(.bordered)
-                Button { vm.nextMark() } label: {
-                    Label("下一处", systemImage: "arrow.right.to.line").font(.system(size: 12.5))
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                }.buttonStyle(.bordered).disabled(vm.marks.isEmpty)
+            HStack(spacing: 6) {
+                flatButton("标难点", "flag") { Task { await vm.toggleMark() } }
+                flatButton("下一处", "arrow.right.to.line", disabled: vm.marks.isEmpty) { vm.nextMark() }
                 if rec.hasTake {
-                    Button { rec.playAB(range: vm.selection) } label: {
-                        Label("对比", systemImage: "arrow.left.arrow.right").font(.system(size: 12.5))
-                            .frame(maxWidth: .infinity, minHeight: 38)
-                    }.buttonStyle(.bordered)
+                    flatButton("对比", "arrow.left.arrow.right") { rec.playAB(range: vm.selection) }
                 }
             }
         }
-        .padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 4)
+        .padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 4)
         .background(.bar)
         .onChange(of: gapIn) { _, v in player.gapIn = v }
         .onChange(of: loopTimes) { _, v in player.loopTimes = v }
         .onChange(of: snap) { _, v in vm.snap = v }
     }
+    private func bigButton(_ icon: String, prominent: Bool = false, on: Bool = false,
+                           tint: Color? = nil, w: CGFloat = 44,
+                           _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Image(systemName: icon).font(.system(size: 17))
+                .frame(width: w, height: 44)
+                .background(prominent || on ? (tint ?? Color.accentColor) : Color(.secondarySystemBackground))
+                .foregroundStyle(prominent || on ? Color.white : Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+    private func flatButton(_ t: String, _ icon: String, disabled: Bool = false,
+                            _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Label(t, systemImage: icon).font(.system(size: 12))
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(Color(.secondarySystemBackground))
+                .foregroundStyle(disabled ? Color.secondary : Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain).disabled(disabled)
+    }
+
+    // MARK: - 两张抽屉
 
     private var settingsSheet: some View {
         NavigationStack {
@@ -347,7 +380,8 @@ struct DrillScreen: View {
                 Section("播放") {
                     Toggle("一段播完自动下一句", isOn: $autoNext)
                     Picker("循环间隔", selection: $gapIn) {
-                        ForEach([0.3, 0.5, 0.8, 1.2, 2.0], id: \.self) { Text("\($0, specifier: "%.1f") 秒").tag($0) }
+                        ForEach([0.3, 0.5, 0.8, 1.2, 2.0], id: \.self) {
+                            Text("\($0, specifier: "%.1f") 秒").tag($0) }
                     }
                     Picker("循环遍数", selection: $loopTimes) {
                         Text("一直循环").tag(0)
@@ -357,44 +391,119 @@ struct DrillScreen: View {
                 Section {
                     Toggle("音量键切上下句", isOn: $volKeys)
                 } header: { Text("音量键") } footer: {
-                    Text("打开后：音量＋＝下一句，音量−＝上一句，按完音量会自动复位。"
-                         + "手揣兜里也能换句子。关掉就还给系统调音量。")
+                    Text("音量＋＝下一句，音量−＝上一句，按完音量自动复位；离开这一屏自动还给系统。")
                 }
                 Section("选区") {
                     Toggle("拖动时吸到词边", isOn: $snap)
+                    Toggle("记住每句的选区", isOn: $vm.rememberSelection)
                 }
-                Section("跟读") {
-                    Toggle("录完自动对比播放", isOn: $autoAB)
-                }
-                Section("显示") {
-                    Toggle("显示英文释义", isOn: $showDef)
-                }
+                Section("跟读") { Toggle("录完自动对比播放", isOn: $autoAB) }
+                Section("显示") { Toggle("显示英文释义", isOn: $showDef) }
                 Section {
-                    Text("波形上：单指拖＝平移，双指捏＝缩放，点一下＝把最近的边界挪过来，"
+                    Text("波形：单指拖＝平移，双指捏＝缩放，点一下＝把最近的边界挪过来，"
                          + "长按拖＝画新选区，拖两端圆点＝改边界。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("精听设置")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("精听设置").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
                 Button("完成") { showMore = false } } }
         }
     }
 
-    // MARK: - 动作
+    /// 原文/译文的样式：字体、字号、颜色、卡片底色，上面实时预览
+    private var styleSheet: some View {
+        NavigationStack {
+            Form {
+                Section("预览") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Excuse me, can you tell me the way to the museum please?")
+                            .font(face(sentFace, sentFont))
+                            .foregroundStyle(color(sentColor) ?? Color.primary)
+                        Text("劳驾，请问去博物馆怎么走？")
+                            .font(face(cnFace, cnFont))
+                            .foregroundStyle(color(cnColor) ?? Color.secondary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(color(cardBg) ?? Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                Section("原文") {
+                    Picker("字体", selection: $sentFace) { faceOptions }
+                    sizeRow("字号", $sentFont, 15...34)
+                    colorRow("颜色", $sentColor)
+                }
+                Section("译文") {
+                    Picker("字体", selection: $cnFace) { faceOptions }
+                    sizeRow("字号", $cnFont, 11...28)
+                    colorRow("颜色", $cnColor)
+                }
+                Section("卡片底色") { colorRow("底色", $cardBg) }
+                Section {
+                    Button("全部恢复默认") {
+                        sentFace = "system"; sentFont = 21; sentColor = ""
+                        cnFace = "system"; cnFont = 16; cnColor = ""; cardBg = ""
+                    }
+                }
+            }
+            .navigationTitle("原文样式").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
+                Button("完成") { showStyle = false } } }
+        }
+    }
+    private var faceOptions: some View {
+        Group {
+            Text("系统").tag("system")
+            Text("圆体").tag("rounded")
+            Text("衬线").tag("serif")
+            Text("等宽").tag("mono")
+        }
+    }
+    private func sizeRow(_ t: String, _ v: Binding<Double>, _ r: ClosedRange<Double>) -> some View {
+        HStack {
+            Text(t)
+            Slider(value: v, in: r, step: 1)
+            Text("\(Int(v.wrappedValue))").monospacedDigit()
+                .foregroundStyle(.secondary).frame(width: 28)
+        }
+    }
+    private func colorRow(_ t: String, _ hex: Binding<String>) -> some View {
+        HStack {
+            ColorPicker(t, selection: Binding(
+                get: { color(hex.wrappedValue) ?? Color.primary },
+                set: { hex.wrappedValue = $0.hexString }))
+            if !hex.wrappedValue.isEmpty {
+                Button("默认") { hex.wrappedValue = "" }.font(.caption).buttonStyle(.bordered)
+            }
+        }
+    }
 
+    // MARK: - 小工具
+
+    private func face(_ name: String, _ size: Double) -> Font {
+        switch name {
+        case "rounded": return .system(size: size, design: .rounded)
+        case "serif":   return .system(size: size, design: .serif)
+        case "mono":    return .system(size: size, design: .monospaced)
+        default:        return .system(size: size)
+        }
+    }
+    private func color(_ hex: String) -> Color? { hex.isEmpty ? nil : Color(hex: hex) }
+    private func cycleScheme() {
+        scheme = scheme == "system" ? "light" : (scheme == "light" ? "dark" : "system")
+    }
     private var isFav: Bool { (store.prog[store.current?.src ?? ""]?.fav ?? 0) == 1 }
     private func toggleFav() async {
         guard let s = store.current else { return }
-        let on = !isFav
-        try? await Api.fav(s.src, on, meta: store.meta(s))
+        try? await Api.fav(s.src, !isFav, meta: store.meta(s))
         await store.refreshProgress()
     }
-    /// 只有开了"自动下一句"才跳，并且是**整屏跟着跳**（文字、波形、词边界一起换）
-    private func advanceIfWanted() {
-        guard autoNext else { return }
-        step(1)
+    private func wireVolumeKeys() {
+        let vk = VolumeKeys.shared
+        vk.onUp = { step(1) }
+        vk.onDown = { step(-1) }
+        vk.enable(volKeys)
     }
     private func step(_ d: Int) {
         let i = max(0, min(store.items.count - 1, store.index + d))
@@ -405,21 +514,19 @@ struct DrillScreen: View {
         showText = true
         rec.reset()
     }
-    /// 音量＋＝下一句，音量−＝上一句。开关一变立刻生效。
-    private func wireVolumeKeys() {
-        let vk = VolumeKeys.shared
-        vk.onUp = { step(1) }
-        vk.onDown = { step(-1) }
-        vk.enable(volKeys)
-        if volKeys { showFlash("音量键已接管：＋下一句　−上一句") }
-    }
-
     private func showFlash(_ t: String) {
         flash = t
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { if flash == t { flash = nil } }
     }
-    private func fmt(_ t: Double) -> String {
-        String(format: "%d:%05.2f", Int(t) / 60, t.truncatingRemainder(dividingBy: 60))
+}
+
+extension Color {
+    /// ColorPicker 给的是 Color，要存进 UserDefaults 就得转成 #rrggbb
+    var hexString: String {
+        let c = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
     }
 }
 
