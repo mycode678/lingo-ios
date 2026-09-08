@@ -37,9 +37,19 @@ extension View {
 enum Audit {
     static var on: Bool { Demo.on && ProcessInfo.processInfo.arguments.contains("-audit") }
     private static var lastReport = ""
+    private static var pending: DispatchWorkItem?
 
+    /// 布局过程中会来很多次中间状态（屏高还是 0、坐标是负的），报它们全是噪声。
+    /// 所以只记下最新一份，等 1 秒不再变化了才真正判定。
     static func check(_ blocks: [BlockFrame], screen: CGSize) {
-        guard on, blocks.count > 1 else { return }
+        guard on, blocks.count > 1, screen.height > 100 else { return }
+        pending?.cancel()
+        let job = DispatchWorkItem { judge(blocks, screen: screen) }
+        pending = job
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: job)
+    }
+
+    private static func judge(_ blocks: [BlockFrame], screen: CGSize) {
         var lines: [String] = []
         var fails: [String] = []
         for b in blocks.sorted(by: { $0.rect.minY < $1.rect.minY }) {
