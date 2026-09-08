@@ -67,16 +67,17 @@ struct DrillScreen: View {
                 // 位置钉死：波形、原文、小句各占固定高度，换句子时谁都不动。
                 // 内容多了在自己那一块里滚，不许把别人挤上挤下（切句时整屏乱跳就是这么来的）。
                 VStack(spacing: 8) {
-                    Spacer(minLength: 0).frame(height: topPad(geo.size.height))
+                    Spacer(minLength: 0).frame(height: 14)
                     waveBlock
                     selectionBar
-                    sentenceCard(s).frame(height: cardHeight)
+                    // 原文卡吃掉剩下的空间：对同一部手机是固定高度（切句不跳），
+                    // 句子长了在卡片里自己滚，不会被截断
+                    sentenceCard(s).frame(maxHeight: .infinity)
                     if !vm.chunks.isEmpty {
                         ScrollView { chunkRow }
                             .frame(height: chunkHeight)
                             .scrollIndicators(.hidden)
                     }
-                    Spacer(minLength: 0)
                 }
                 .frame(width: geo.size.width)
                 // 录完之后的结果单独浮一层，不动上面的布局
@@ -197,17 +198,10 @@ struct DrillScreen: View {
         .buttonStyle(.plain)
     }
 
-    /// 这几个高度只跟字号有关、跟句子长短无关 —— 换句子时布局纹丝不动
-    private var cardHeight: CGFloat {
-        CGFloat(sentFont) * 3.4 + CGFloat(cnFont) * 1.6 + 26 + (showDef ? CGFloat(cnFont) * 1.4 : 0)
-    }
     private var chunkHeight: CGFloat { 82 }
-    private func topPad(_ h: CGFloat) -> CGFloat {
-        // 主块整体略微下移，落在拇指够得着的位置；比例固定，不随内容变
-        max(0, (h - 190 - 34 - cardHeight - chunkHeight - 150) * 0.35)
-    }
 
     private func sentenceCard(_ s: Api.Sentence) -> some View {
+        ScrollView {                       // 长句子在卡片内部滚，不挤别人也不被截
         VStack(alignment: .leading, spacing: 6) {
             // 播到哪个词，哪个词亮 —— 跟电脑版一样的浅黄底
             Text(highlighted(s.en))
@@ -227,8 +221,11 @@ struct DrillScreen: View {
                 Text(d).font(.system(size: max(11, cnFont - 3))).foregroundStyle(.tertiary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(color(cardBg) ?? Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 8)
