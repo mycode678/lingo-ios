@@ -318,6 +318,7 @@ struct DrillScreen: View {
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
+                .accessibilityElement(children: .contain)   // 不声明的话 UI 测试找不到这块
                 .accessibilityIdentifier("swipeArea")
                 .simultaneousGesture(swipeToStep)
             }
@@ -370,6 +371,7 @@ struct DrillScreen: View {
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
+                .accessibilityElement(children: .contain)   // 不声明的话 UI 测试找不到这块
                 .accessibilityIdentifier("swipeArea")
                 .simultaneousGesture(swipeToStep)
             }

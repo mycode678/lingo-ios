@@ -7,6 +7,21 @@ import XCTest
 /// 之前横屏控制条滚不动、波形上圈不了选区，都是截图看不出来、只有真滑一次才知道的。
 final class DrillUITests: XCTestCase {
 
+    /// 一直往左滑，直到目标能点为止（最多 6 次）。一次 swipeLeft 不一定滑得到底。
+    private func scrollToEnd(_ strip: XCUIElement, target: XCUIElement) -> Bool {
+        for _ in 0..<6 {
+            if target.exists && target.isHittable { return true }
+            strip.swipeLeft()
+        }
+        return target.exists && target.isHittable
+    }
+
+    /// 失败时把当前屏幕上能点的东西列出来，省得瞎猜
+    private func dump(_ app: XCUIApplication) -> String {
+        let names = app.buttons.allElementsBoundByIndex.prefix(30).map { $0.label }
+        return "屏幕上的按钮：" + names.joined(separator: " | ")
+    }
+
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-screen", "drill"] + extra
@@ -26,11 +41,8 @@ final class DrillUITests: XCTestCase {
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "找不到控制条")
 
         XCTAssertTrue(app.buttons["录音"].exists, "控制条上没有录音")
-        // 最右边那几档倍速一开始在屏幕外，滑过去应该能点到
-        let last = app.buttons["自定"]
-        strip.swipeLeft(); strip.swipeLeft()
-        XCTAssertTrue(last.waitForExistence(timeout: 3) && last.isHittable,
-                      "控制条滑到底也点不到最后一个（自定）")
+        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["自定"]),
+                      "控制条滑到底也点不到最后一个（自定）；" + dump(app))
     }
 
     /// 横屏：同样要能滑。这一条就是为了逮住"横屏滚不动"那个 bug。
@@ -39,10 +51,8 @@ final class DrillUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let strip = app.scrollViews.matching(identifier: "controlStrip").firstMatch
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "横屏找不到控制条")
-        let last = app.buttons["自定"]
-        strip.swipeLeft(); strip.swipeLeft()
-        XCTAssertTrue(last.waitForExistence(timeout: 3) && last.isHittable,
-                      "横屏控制条滑到底也点不到最后一个（自定）")
+        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["自定"]),
+                      "横屏控制条滑到底也点不到最后一个（自定）；" + dump(app))
     }
 
     /// 波形上必须能长按拖出选区（长按 0.18 秒再拖）
