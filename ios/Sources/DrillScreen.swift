@@ -300,14 +300,16 @@ struct DrillScreen: View {
     }
 
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
-        let m = Metrics(header: 34, sel: 30, chunks: vm.chunks.isEmpty ? 0 : 44,
-                        strip: 44, grade: 38, gap: 20)
+        // 这些常数都是体检（-audit）量出来的实际值，不是拍脑袋估的：
+        // 顶栏内部写死 38；横屏控制条 44、打分 38＋6 内边距＝44。
+        let m = Metrics(header: 38, sel: 30, chunks: vm.chunks.isEmpty ? 0 : 44,
+                        strip: 44, grade: 44, gap: 26)
         let hs = split(geo.size.height, m)
         return VStack(spacing: 4) {
             // 上半截单独一层：跟读结果只浮在这一截上，不许盖住下面的控制条，
             // 也不许盖满波形（盖住就没法圈选区）。
             VStack(spacing: 4) {
-                header.frame(height: m.header).auditBlock("顶栏")
+                header.auditBlock("顶栏")
                 waveBlock.frame(height: hs.wave).padding(.horizontal, T.side).auditBlock("波形")
                 VStack(spacing: 4) {
                     selectionBar(m.sel).auditBlock("选区条")
@@ -352,11 +354,12 @@ struct DrillScreen: View {
     }
 
     private func portrait(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
+        // 同上，实测：控制条 44＋上下内边距＝58，打分 48＋6＝54＋行距＝60
         let m = Metrics(header: 38, sel: 36, chunks: vm.chunks.isEmpty ? 0 : 44,
-                        strip: 52, grade: 54, gap: 32)
+                        strip: 58, grade: 60, gap: 26)
         let hs = split(geo.size.height, m)
         return VStack(spacing: 0) {
-            header.frame(height: m.header).auditBlock("顶栏")
+            header.auditBlock("顶栏")
             VStack(spacing: 8) {
                 waveBlock.frame(height: hs.wave).padding(.horizontal, T.side).auditBlock("波形")
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
