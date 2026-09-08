@@ -30,7 +30,8 @@ struct DrillScreen: View {
     @AppStorage("drill.times") private var loopTimes = 0
     @AppStorage("drill.snap") private var snap = true
     @AppStorage("drill.autoAB") private var autoAB = true
-    @AppStorage("drill.showDef") private var showDef = false
+    @AppStorage("drill.showDef") private var showDef = false        // 英文释义
+    @AppStorage("drill.showDcn") private var showDcn = false        // 中文释义
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
     @AppStorage("drill.boostHF") private var boostHF = false        // 听辅音（高频增强）
@@ -225,6 +226,7 @@ struct DrillScreen: View {
                 Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
                 Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
                 Toggle("显示英文释义", isOn: $showDef)
+                Toggle("显示中文释义", isOn: $showDcn)
                 Toggle("听辅音（更清楚）", isOn: $boostHF)
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -268,14 +270,25 @@ struct DrillScreen: View {
             edgeGroup("B", minus: { vm.nudge("b", -0.08) },
                       set: { vm.setEdgeAtHead("b") }, plus: { vm.nudge("b", 0.08) })
             Spacer(minLength: 0)
-            Button { vm.setSelection(a: nil, b: nil, play: false); vm.zoomAll() } label: {
-                Image(systemName: "rectangle.dashed")
+            // 清掉选区回到整句。以前只是清了选区不播 ——
+            // 循环模式下正播着小句，点它看着像"没反应"（其实还在循环那个小句）。
+            // 现在跟点小句一样：清完直接从头播整句。
+            Button {
+                vm.setSelection(a: nil, b: nil, play: false)
+                vm.zoomAll()
+                player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                player.play(from: 0)
+            } label: {
+                Label("整句", systemImage: "rectangle.dashed")
             }
-            .buttonStyle(IconButton(on: vm.selection == nil))
-            Button { vm.zoomToSelection() } label: { Image(systemName: "arrow.left.and.right") }
-                .buttonStyle(IconButton())
-                .disabled(vm.selection == nil)
-                .opacity(vm.selection == nil ? 0.35 : 1)
+            .buttonStyle(LabelButton(on: vm.selection == nil))
+            Button { vm.zoomToSelection() } label: {
+                Label("铺满", systemImage: "arrow.left.and.right")
+            }
+            .buttonStyle(LabelButton())
+            .disabled(vm.selection == nil)
+            .opacity(vm.selection == nil ? 0.35 : 1)
             // 跳到下一个难点：本来在底排，底排腾给切句和播放了。
             // 它本来就是选区类操作，放这儿更顺；没标难点时不出现，省一个位置。
             if !vm.marks.isEmpty {
@@ -331,6 +344,7 @@ struct DrillScreen: View {
     private var cardHeight: CGFloat {
         CGFloat(sentFont) * 2.9 + CGFloat(cnFont) * 1.7 + 24
             + (showDef ? CGFloat(cnFont) * 1.5 : 0)
+            + (showDcn ? CGFloat(cnFont) * 1.5 : 0)
     }
 
     private func sentenceCard(_ s: Api.Sentence) -> some View {
@@ -351,6 +365,9 @@ struct DrillScreen: View {
                     .blur(radius: showText ? 0 : 9)
             }
             if showDef, let d = s.dfe, !d.isEmpty {
+                Text(d).font(.system(size: max(11, cnFont - 3))).foregroundStyle(.tertiary)
+            }
+            if showDcn, let d = s.dcn, !d.isEmpty {
                 Text(d).font(.system(size: max(11, cnFont - 3))).foregroundStyle(.tertiary)
             }
         }
@@ -453,12 +470,12 @@ struct DrillScreen: View {
                 if autoNext { step(1) }
             }
         } label: {
-            Text(t).font(.system(size: 13)).lineLimit(1).minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity, minHeight: 44)
+            Text(t).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, minHeight: 48)
                 .foregroundStyle(c)
-                .background(c.opacity(0.10))
+                .background(c.opacity(0.14))
                 .overlay(RoundedRectangle(cornerRadius: T.ctl, style: .continuous)
-                    .stroke(c.opacity(0.28), lineWidth: 1))
+                    .stroke(c.opacity(0.45), lineWidth: 1.2))
                 .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
         }
         .buttonStyle(.plain)

@@ -36,6 +36,7 @@ enum Api {
         var grp: String?
         var gnum: String?
         var dfe: String?
+        var dcn: String?            // 这个义项的中文释义
         var tag: String?
         var kind: String?
         var bold: [String]?

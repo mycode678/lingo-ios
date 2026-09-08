@@ -40,6 +40,21 @@ struct IconButton: ButtonStyle {
     }
 }
 
+/// 图标＋两个字：光图标猜不出是干嘛的（"整句""铺满"这种），配上字一眼就懂
+struct LabelButton: ButtonStyle {
+    var on = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12))
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.7))
+            .padding(.horizontal, 9).frame(height: 32)
+            .background(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .opacity(configuration.isPressed ? 0.5 : 1)
+    }
+}
+
 extension View {
     /// 统一的卡片外观
     func cardStyle(_ bg: Color? = nil) -> some View {
