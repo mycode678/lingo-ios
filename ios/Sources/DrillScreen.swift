@@ -52,6 +52,7 @@ struct DrillScreen: View {
     @State private var showGap = false          // 播放间隔的小面板
     @State private var editRate: Int?           // 正在改第几档速度（-1＝那个自定义档）
     @State private var showLoop = false         // 循环遍数面板
+    @State private var showTake = true          // 跟读结果这块开着没（往下滑收起）
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
     /// 不能用 flash：换句子时 .task 会把 flash 清掉，提示还没看见就没了。
@@ -135,6 +136,9 @@ struct DrillScreen: View {
         }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
         .onChange(of: boostHF) { _, v in player.boostHF = v }
+        .onChange(of: rec.hasTake) { _, has in       // 录完自动把结果弹出来
+            if has { withAnimation(.easeOut(duration: 0.18)) { showTake = true } }
+        }
         .onDisappear {
             player.onSegmentEnd = nil
             VolumeKeys.shared.enable(false)          // 离开就把音量键还给系统
@@ -181,22 +185,8 @@ struct DrillScreen: View {
         }
         // 录完的结果照样浮一层，不动上面的布局
         .overlay(alignment: .bottom) {
-            if rec.hasTake {
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("跟读结果").font(.system(size: 12)).foregroundStyle(.secondary)
-                        Spacer()
-                        Button { rec.playAB(range: vm.selection) } label: {
-                            Label("对比", systemImage: "arrow.left.arrow.right").font(.system(size: 12))
-                        }
-                        .buttonStyle(QuietButton())
-                        Button { rec.reset() } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 14).padding(.top, 8)
-                    ScrollView { takeBlock.padding(.bottom, 6) }
-                }
+            if rec.hasTake && showTake {
+                takePanel
                 .frame(maxHeight: geo.size.height * 0.62)
                 .background(.ultraThinMaterial)
                 .transition(.move(edge: .bottom))
@@ -205,7 +195,8 @@ struct DrillScreen: View {
         .padding(.top, 2)
     }
 
-    /// 横屏专用的那一条：句子列表、播放、整句、铺满、循环、间隔、录音、倍速，全在一行
+    /// 横屏那一条：列表｜播放｜录音｜循环｜整句｜间隔｜显示｜倍速，全在一行。
+    /// 顺序＝用得最多的靠左（拇指落点），铺满在选区条上。
     private var landscapeBar: some View {
         HStack(spacing: 6) {
             Button { showList = true } label: {
@@ -214,6 +205,7 @@ struct DrillScreen: View {
                     Text("\(store.index + 1)/\(store.items.count)")
                         .font(.system(size: 13, weight: .medium)).monospacedDigit()
                 }
+                .fixedSize()
                 .foregroundStyle(Color.primary.opacity(0.75))
                 .padding(.horizontal, 9).frame(height: 36)
                 .background(Color.primary.opacity(0.06))
@@ -230,7 +222,15 @@ struct DrillScreen: View {
             }
             .buttonStyle(.plain)
 
-            // 循环是最常用的，紧挨着播放键
+            Button {
+                rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
+                                : rec.start()
+            } label: {
+                Label(rec.isRecording ? "停止" : "录音",
+                      systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
+            }
+            .buttonStyle(LabelButton(on: rec.isRecording))
+
             LoopButton(player: player, times: loopTimes,
                        onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
                        onHold: { showLoop = true })
@@ -244,34 +244,9 @@ struct DrillScreen: View {
             } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
             .buttonStyle(LabelButton(on: vm.selection == nil))
 
-            Button { vm.zoomToSelection() } label: {
-                Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
-            }
-            .buttonStyle(LabelButton())
-            .disabled(vm.selection == nil).opacity(vm.selection == nil ? 0.35 : 1)
+            if rec.hasTake && !showTake { takeReopen }
 
-            Button { showGap = true } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "timer").font(.system(size: 12))
-                    Text(gapIn == 0 ? "不停" : "\(gapIn, specifier: "%.1f")s")
-                        .font(.system(size: 13, weight: .medium)).monospacedDigit()
-                }
-                .foregroundStyle(Color.primary.opacity(0.75))
-                .padding(.horizontal, 8).frame(height: 36)
-                .background(Color.primary.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
-                                : rec.start()
-            } label: {
-                Image(systemName: rec.isRecording ? "stop.circle.fill" : "mic")
-                    .foregroundStyle(rec.isRecording ? Color.red : Color.primary.opacity(0.55))
-            }
-            .buttonStyle(IconButton())
-
+            gapChip
             showMenu
 
             ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
@@ -343,24 +318,8 @@ struct DrillScreen: View {
                 .frame(maxHeight: .infinity)
                 // 录完之后的结果单独浮一层，不动上面的布局
                 .overlay(alignment: .bottom) {
-                    if rec.hasTake {
-                        VStack(spacing: 0) {
-                            HStack {
-                                Text("跟读结果").font(.system(size: 12)).foregroundStyle(.secondary)
-                                Spacer()
-                                // 原声和自己的录音来回对比 —— 只有录了才有意义，就跟结果放一起
-                                Button { rec.playAB(range: vm.selection) } label: {
-                                    Label("对比", systemImage: "arrow.left.arrow.right")
-                                        .font(.system(size: 12))
-                                }
-                                .buttonStyle(QuietButton())
-                                Button { rec.reset() } label: {
-                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 14).padding(.top, 8)
-                            ScrollView { takeBlock.padding(.bottom, 6) }
-                        }
+                    if rec.hasTake && showTake {
+                        takePanel
                         .frame(maxHeight: geo.size.height * 0.46)
                         .background(.ultraThinMaterial)
                         .transition(.move(edge: .bottom))
@@ -504,6 +463,77 @@ struct DrillScreen: View {
     private var nearestRate: Double {
         rates.min(by: { abs($0 - Double(player.rate)) < abs($1 - Double(player.rate)) }) ?? 1.0
     }
+    /// 循环间隔那个牌子：点一下开面板。练的时候一直在动，不能埋进设置抽屉里。
+    private var gapChip: some View {
+        Button { showGap = true } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "timer").font(.system(size: 12))
+                Text(gapIn == 0 ? "不停" : "\(gapIn, specifier: "%.1f")s")
+                    .font(.system(size: 13, weight: .medium)).monospacedDigit()
+            }
+            .fixedSize()
+            .foregroundStyle(Color.primary.opacity(0.75))
+            .padding(.horizontal, 9).frame(height: 34)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 结果下滑收起来之后，用它叫回来（录音还在，不用重录）
+    private var takeReopen: some View {
+        Button { withAnimation(.easeOut(duration: 0.18)) { showTake = true } } label: {
+            Label("结果", systemImage: "chart.bar.doc.horizontal").fixedSize()
+        }
+        .buttonStyle(LabelButton(on: true))
+    }
+
+    /// 跟读结果。横屏高度是宝贵资源，所以**不给它单独的标题栏**：
+    /// 操作（对比、我的）和三个分项、总分全挤在同一行，顶上只有一条 4 点高的小横杠
+    /// 提示"能下滑收起"。关闭不用按钮 —— 往下一滑就收（录音还留着，
+    /// 底排会冒出"结果"把它叫回来）。操作一律靠左，拇指不用横穿屏幕。
+    private var takePanel: some View {
+        VStack(spacing: 0) {
+            Capsule().fill(Color.primary.opacity(0.22))
+                .frame(width: 34, height: 4).padding(.top, 5).padding(.bottom, 3)
+            HStack(spacing: 6) {
+                Button { rec.playAB(range: vm.selection) } label: {
+                    Label("对比", systemImage: "arrow.left.arrow.right").fixedSize()
+                }
+                .buttonStyle(LabelButton())
+                Button { rec.playMine(range: vm.selection) } label: {
+                    Label("我的", systemImage: "person.wave.2").fixedSize()
+                }
+                .buttonStyle(LabelButton())
+                if let sc = rec.score {
+                    scoreItem("词准", sc.words)
+                    scoreItem("语调", sc.tone)
+                    scoreItem("节奏", sc.rhythm)
+                }
+                Spacer(minLength: 0)
+                if let sc = rec.score {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(sc.overall)")
+                            .font(.system(size: 24, weight: .bold)).monospacedDigit()
+                            .foregroundStyle(scoreColor(sc.overall))
+                        Text("分").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 10).padding(.bottom, 4)
+            ScrollView { takeBlock.padding(.bottom, 6) }
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onEnded { g in
+                    if g.translation.height > 40 {
+                        withAnimation(.easeIn(duration: 0.18)) { showTake = false }
+                    }
+                }
+        )
+    }
+
     /// 显示什么：原文/译文/中文释义/英文释义各自开关，默认一个都不显示。
     /// 精听的规矩是先听声音，字是听不出来时才翻的答案。
     private var showMenu: some View {
@@ -621,18 +651,7 @@ struct DrillScreen: View {
                 Text(rec.heardAttributed).font(.system(size: 15))
                 if !rec.wrongWords.isEmpty {
                     Text("问题词：" + rec.wrongWords.joined(separator: " / "))
-                        .font(.system(size: 11)).foregroundStyle(.orange)
-                }
-            }
-            if let sc = rec.score {
-                HStack(spacing: 18) {
-                    scoreItem("词准确", sc.words)
-                    scoreItem("语调", sc.tone)
-                    scoreItem("节奏", sc.rhythm)
-                    Spacer()
-                    Button { rec.playMine(range: vm.selection) } label: {
-                        Label("我的", systemImage: "person.wave.2").font(.system(size: 12))
-                    }.buttonStyle(.bordered).controlSize(.small)
+                        .font(.system(size: 12)).foregroundStyle(.orange)
                 }
             }
             if let c = rec.curve {
@@ -651,13 +670,16 @@ struct DrillScreen: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 8)
     }
+    /// 一个分项："词准 88" 横着来 —— 原来是竖排大数字＋10pt 小标签，
+    /// 占三倍地方，标签还小到看不清。
     private func scoreItem(_ k: String, _ v: Int?) -> some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 3) {
+            Text(k).font(.system(size: 12)).foregroundStyle(.secondary)
             Text(v == nil ? "…" : "\(v!)")
-                .font(.system(size: 21, weight: .semibold)).monospacedDigit()
+                .font(.system(size: 16, weight: .semibold)).monospacedDigit()
                 .foregroundStyle(scoreColor(v))
-            Text(k).font(.system(size: 10)).foregroundStyle(.secondary)
         }
+        .fixedSize()
     }
     private func scoreColor(_ v: Int?) -> Color {
         guard let v else { return .secondary }
@@ -702,8 +724,10 @@ struct DrillScreen: View {
     /// 上一句 / 播放 / 下一句 三个大键并排，下面一行是"第几句（点开列表）"和倍速。
     /// 收藏、难点这些次高频的收成小图标排在右边，尺寸压到 36 保证 SE 也塞得下。
     private var transport: some View {
+        // 底排＝拇指区，按"用得最多"排：播放 → 录音（跟读是精听的另一半）→ 循环 → 整句，
+        // 右端是间隔。铺满挪去了选区条 —— SE 的 375 宽这一排全塞会溢出 30 点（算过）。
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 22))
@@ -713,6 +737,19 @@ struct DrillScreen: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+
+                Button {
+                    rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
+                                    : rec.start()
+                } label: {
+                    Label(rec.isRecording ? "停止" : "录音",
+                          systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
+                }
+                .buttonStyle(LabelButton(on: rec.isRecording))
+
+                LoopButton(player: player, times: loopTimes,
+                           onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
+                           onHold: { showLoop = true })
 
                 // 回到整句：清掉选区并从头播。以前只清不播，
                 // 循环模式下正循环着小句，点它看着像"没反应"。
@@ -727,43 +764,14 @@ struct DrillScreen: View {
                 }
                 .buttonStyle(LabelButton(on: vm.selection == nil))
 
-                Button { vm.zoomToSelection() } label: {
-                    Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
-                }
-                .buttonStyle(LabelButton())
-                .disabled(vm.selection == nil)
-                .opacity(vm.selection == nil ? 0.35 : 1)
+                if rec.hasTake && !showTake { takeReopen }   // 关掉了还能叫回来
 
-                // 点＝开关循环，长按＝选循环几遍
-                LoopButton(player: player, times: loopTimes,
-                           onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
-                           onHold: { showLoop = true })
+                Spacer(minLength: 0)
 
-                Button {
-                    rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
-                                    : rec.start()
-                } label: {
-                    Image(systemName: rec.isRecording ? "stop.circle.fill" : "mic")
-                        .foregroundStyle(rec.isRecording ? Color.red : Color.primary.opacity(0.55))
-                }
-                .buttonStyle(IconButton())
-
-                // 循环间隔：跟播放键放同一排，点一下就能改。
-                // 这是练的时候一直在动的东西（跟不上就拉长、顺了就缩短），
-                // 埋在设置抽屉里等于没有。牌子上显示的是"同一段两遍之间"那个值。
-                Button { showGap = true } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "timer").font(.system(size: 12))
-                        Text(gapIn == 0 ? "不停" : "\(gapIn, specifier: "%.1f")s")
-                            .font(.system(size: 13, weight: .medium)).monospacedDigit()
-                    }
-                    .foregroundStyle(Color.primary.opacity(0.75))
-                    .padding(.horizontal, 9).frame(height: 34)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-                }
-                .buttonStyle(.plain)
+                gapChip
             }
+            .padding(.horizontal, T.side)
+
             HStack(spacing: T.gap) {
                 // 选句子：以前在顶栏，够不着 —— 挪到这儿，跟倍速同一行，不多占高度
                 Button { showList = true } label: {
@@ -779,6 +787,8 @@ struct DrillScreen: View {
                     .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
                 }
                 .buttonStyle(.plain)
+
+                showMenu
 
                 // 点＝换速度，长按＝改这一档的值（0.1 一步，也能直接打数字）。
                 // 不用 segmented Picker 是因为它没法长按；档位数固定四个，够用。

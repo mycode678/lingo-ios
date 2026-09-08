@@ -102,14 +102,15 @@ struct LoopSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    ForEach([0, 2, 3, 5, 10], id: \.self) { n in
+                    // 顺序按"几遍"从少到多，无限放最后
+                    ForEach([2, 3, 5, 10, 0], id: \.self) { n in
                         Button {
                             loopTimes = n; player.loopTimes = n
                             if !player.loop { player.loop = true; player.play() }
                             dismiss()
                         } label: {
                             HStack {
-                                Text(n == 0 ? "一直循环，直到我停" : "循环 \(n) 遍")
+                                Text(n == 0 ? "无限循环" : "循环 \(n) 遍")
                                 Spacer()
                                 if loopTimes == n {
                                     Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
