@@ -171,7 +171,7 @@ struct DrillScreen: View {
                     .contentShape(Rectangle())
                     .simultaneousGesture(swipeToStep)
             }
-            landscapeBar
+            controlStrip
             gradeRow(38)
         }
         .padding(.bottom, 2)
@@ -199,71 +199,87 @@ struct DrillScreen: View {
         .padding(.top, 2)
     }
 
-    /// 横屏那一条：列表｜播放｜录音｜循环｜整句｜间隔｜显示｜倍速，全在一行。
-    /// 顺序＝用得最多的靠左（拇指落点），铺满在选区条上。
-    private var landscapeBar: some View {
-        HStack(spacing: 6) {
-            // 只留图标：第几句顶栏已经写着了，这儿再写一遍纯属重复
-            Button { showList = true } label: {
-                Image(systemName: "list.bullet").font(.system(size: 15))
-                .foregroundStyle(Color.primary.opacity(0.75))
-                .frame(width: 40, height: 36)
-                .background(Color.primary.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+    /// 底部控制条：**一条**横向可滑的长条，竖屏横屏共用。
+    /// 顺序＝用得最多的在最左边（拇指落点）：列表、播放、录音、对比、整句、铺满，
+    /// 然后才是循环、间隔、显示、倍速。放不下就往左滑，不再占第二行高度
+    /// （原来两行 94 点，现在 44 点，省下的 50 点全给波形）。
+    private var controlStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Button { showList = true } label: {
+                    Image(systemName: "list.bullet").font(.system(size: 15))
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .frame(width: 42, height: 38)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button { player.toggle() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 18))
+                        .frame(width: 52, height: 38)
+                        .background(Color.accentColor).foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
+                                    : rec.start()
+                } label: {
+                    Label(rec.isRecording ? "停止" : "录音",
+                          systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
+                }
+                .buttonStyle(LabelButton(on: rec.isRecording))
+
+                if rec.hasTake {                       // 录过才有意义
+                    Button { rec.playAB(range: vm.selection) } label: {
+                        Label("对比", systemImage: "arrow.left.arrow.right").fixedSize()
+                    }
+                    .buttonStyle(LabelButton())
+                    if !showTake { takeReopen }
+                }
+
+                Button {
+                    vm.setSelection(a: nil, b: nil, play: false)
+                    vm.zoomAll()
+                    player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                                 onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                    player.play(from: 0)
+                } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
+                .buttonStyle(LabelButton(on: vm.selection == nil))
+
+                Button { vm.zoomToSelection() } label: {
+                    Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
+                }
+                .buttonStyle(LabelButton())
+                .disabled(vm.selection == nil).opacity(vm.selection == nil ? 0.35 : 1)
+
+                LoopButton(player: player, times: loopTimes,
+                           onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
+                           onHold: { showLoop = true })
+
+                gapChip
+                showMenu
+
+                ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
+                    rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001, w: 52,
+                             tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
+                             hold: { editRate = i })
+                }
+                rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
+                         on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001, w: 52,
+                         tap: {
+                             if customRate > 0 { player.rate = Float(customRate)
+                                                 if player.isPlaying { player.play() } }
+                             else { editRate = -1 }
+                         },
+                         hold: { editRate = -1 })
             }
-            .buttonStyle(.plain)
-
-            Button { player.toggle() } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 17))
-                    .frame(width: 44, height: 36)
-                    .background(Color.accentColor).foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
-                                : rec.start()
-            } label: {
-                Label(rec.isRecording ? "停止" : "录音",
-                      systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
-            }
-            .buttonStyle(LabelButton(on: rec.isRecording))
-
-            LoopButton(player: player, times: loopTimes,
-                       onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
-                       onHold: { showLoop = true })
-
-            Button {
-                vm.setSelection(a: nil, b: nil, play: false)
-                vm.zoomAll()
-                player.claim(loop: player.loop, times: loopTimes, segment: nil,
-                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
-                player.play(from: 0)
-            } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
-            .buttonStyle(LabelButton(on: vm.selection == nil))
-
-            if rec.hasTake && !showTake { takeReopen }
-
-            gapChip
-            showMenu
-
-            ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
-                rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001,
-                         tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
-                         hold: { editRate = i })
-            }
-            rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
-                     on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001,
-                     tap: {
-                         if customRate > 0 { player.rate = Float(customRate)
-                                             if player.isPlaying { player.play() } }
-                         else { editRate = -1 }
-                     },
-                     hold: { editRate = -1 })
+            .padding(.horizontal, T.side)
         }
-        .padding(.horizontal, T.side)
+        .frame(height: 44)
     }
 
     /// 竖屏：从上到下 顶栏 → 波形 → 选区条 → 原文 → 小句 → 打分 → 播放条
@@ -295,6 +311,9 @@ struct DrillScreen: View {
                         }
                         Spacer(minLength: 0)
                     }
+                    // 什么都不显示时这块只剩选区条那点高度，滑不动 ——
+                    // 给它留 72 点的可滑地带（波形是弹性件，不留就被它吃光）
+                    .frame(minHeight: 72)
                     .contentShape(Rectangle())      // 空白处也能滑，不用非按在字上
                     .simultaneousGesture(swipeToStep)
                     .overlay {
@@ -565,13 +584,15 @@ struct DrillScreen: View {
         }
     }
 
-    private func rateChip(_ label: String, on: Bool,
+    /// w 给了就是固定宽（横滑长条里用），不给就平分（老的分段样式）
+    private func rateChip(_ label: String, on: Bool, w: CGFloat? = nil,
                           tap: @escaping () -> Void, hold: @escaping () -> Void) -> some View {
         Text(label)
             .font(.system(size: 13, weight: on ? .semibold : .regular))
             .monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
             .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.75))
-            .frame(maxWidth: .infinity, minHeight: 32)
+            .frame(width: w, height: 38)
+            .frame(maxWidth: w == nil ? .infinity : nil)
             .background(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
             .contentShape(Rectangle())
@@ -726,97 +747,9 @@ struct DrillScreen: View {
     }
 
     /// 底部＝拇指区，所有高频动作都在这儿：
-    /// 上一句 / 播放 / 下一句 三个大键并排，下面一行是"第几句（点开列表）"和倍速。
-    /// 收藏、难点这些次高频的收成小图标排在右边，尺寸压到 36 保证 SE 也塞得下。
+    /// 竖屏底部：就是那条横滑的控制条（原来两行，合并省了 50 点高度）
     private var transport: some View {
-        // 底排＝拇指区，按"用得最多"排：播放 → 录音（跟读是精听的另一半）→ 循环 → 整句，
-        // 右端是间隔。铺满挪去了选区条 —— SE 的 375 宽这一排全塞会溢出 30 点（算过）。
-        VStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Button { player.toggle() } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 22))
-                        .frame(width: 54, height: 54)
-                        .background(Color.accentColor)
-                        .foregroundStyle(.white)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
-                                    : rec.start()
-                } label: {
-                    Label(rec.isRecording ? "停止" : "录音",
-                          systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
-                }
-                .buttonStyle(LabelButton(on: rec.isRecording))
-
-                LoopButton(player: player, times: loopTimes,
-                           onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
-                           onHold: { showLoop = true })
-
-                // 回到整句：清掉选区并从头播。以前只清不播，
-                // 循环模式下正循环着小句，点它看着像"没反应"。
-                Button {
-                    vm.setSelection(a: nil, b: nil, play: false)
-                    vm.zoomAll()
-                    player.claim(loop: player.loop, times: loopTimes, segment: nil,
-                                 onEnd: { autoAdvance(after: store.current?.src ?? "") })
-                    player.play(from: 0)
-                } label: {
-                    Label("整句", systemImage: "rectangle.dashed").fixedSize()
-                }
-                .buttonStyle(LabelButton(on: vm.selection == nil))
-
-                if rec.hasTake && !showTake { takeReopen }   // 关掉了还能叫回来
-
-                Spacer(minLength: 0)
-
-                gapChip
-            }
-            .padding(.horizontal, T.side)
-
-            HStack(spacing: T.gap) {
-                // 选句子：以前在顶栏，够不着 —— 挪到这儿，跟倍速同一行，不多占高度
-                Button { showList = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "list.bullet").font(.system(size: 12))
-                        Text("\(store.index + 1)/\(store.items.count)")
-                            .font(.system(size: 13, weight: .medium)).monospacedDigit()
-                        Image(systemName: "chevron.up").font(.system(size: 9))
-                    }
-                    .foregroundStyle(Color.primary.opacity(0.75))
-                    .padding(.horizontal, 10).frame(height: 32)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                showMenu
-
-                // 点＝换速度，长按＝改这一档的值（0.1 一步，也能直接打数字）。
-                // 不用 segmented Picker 是因为它没法长按；档位数固定四个，够用。
-                HStack(spacing: 5) {
-                    ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
-                        rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001,
-                                 tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
-                                 hold: { editRate = i })
-                    }
-                    // 第五个：自己填一个速度（0.85、1.25 这种），不动前面四档
-                    rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
-                             on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001,
-                             tap: {
-                                 if customRate > 0 {
-                                     player.rate = Float(customRate)
-                                     if player.isPlaying { player.play() }
-                                 } else { editRate = -1 }
-                             },
-                             hold: { editRate = -1 })
-                }
-            }
-            .padding(.horizontal, T.side)
-        }
+        controlStrip
         .padding(.top, 8).padding(.bottom, 6)
         .background(.bar)
         .onChange(of: gapIn) { _, v in player.gapIn = v }
