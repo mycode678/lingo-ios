@@ -7,6 +7,8 @@ import WebKit
 struct DictScreen: View {
     @EnvironmentObject var store: Store
     @EnvironmentObject var player: Player
+    @Environment(\.colorScheme) private var systemScheme
+    @AppStorage("ui.scheme") private var scheme = "system"
     @AppStorage("ui.entryFont") private var entryFont = 17.0
     @AppStorage("ui.listFont") private var listFont = 15.0
     @State private var q = ""
@@ -21,7 +23,8 @@ struct DictScreen: View {
                     if store.entryHTML.isEmpty {
                         welcome
                     } else {
-                        EntryWebView(html: store.entryHTML, fontSize: entryFont, onWord: { w in
+                        EntryWebView(html: store.entryHTML, fontSize: entryFont,
+                                     dark: effectiveDark, onWord: { w in
                             Task { await store.look(w) }
                         }, onSound: { src in
                             play(src)
@@ -54,6 +57,12 @@ struct DictScreen: View {
             }
             .onSubmit(of: .search) { Task { await store.look(q) } }
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button { cycleScheme() } label: {
+                        Image(systemName: scheme == "system" ? "circle.lefthalf.filled"
+                                        : (scheme == "light" ? "sun.max" : "moon"))
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !store.word.isEmpty {
                         Button {
@@ -68,6 +77,14 @@ struct DictScreen: View {
             }
             .sheet(isPresented: $showList) { sentenceList }
         }
+    }
+
+    /// 白天 → 夜间 → 跟随系统，一个按钮循环切
+    private func cycleScheme() {
+        scheme = scheme == "system" ? "light" : (scheme == "light" ? "dark" : "system")
+    }
+    private var effectiveDark: Bool {
+        scheme == "dark" ? true : (scheme == "light" ? false : systemScheme == .dark)
     }
 
     private var welcome: some View {
@@ -165,6 +182,9 @@ struct DictScreen: View {
 struct EntryWebView: UIViewRepresentable {
     var html: String
     var fontSize: Double = 17
+    /// 词条正文是网页渲染的，它的夜间样式原来只认系统外观；
+    /// App 里强制切白天/夜间时就对不上了，所以由外面告诉它到底是黑还是白。
+    var dark: Bool = false
     var onWord: (String) -> Void
     var onSound: (String) -> Void
 
@@ -182,9 +202,12 @@ struct EntryWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ v: WKWebView, context: Context) {
-        guard context.coordinator.lastHTML != html || context.coordinator.lastFont != fontSize else { return }
+        guard context.coordinator.lastHTML != html
+                || context.coordinator.lastFont != fontSize
+                || context.coordinator.lastDark != dark else { return }
         context.coordinator.lastHTML = html
         context.coordinator.lastFont = fontSize
+        context.coordinator.lastDark = dark
         v.loadHTMLString(page(html), baseURL: URL(string: Api.base))
     }
 
@@ -192,14 +215,14 @@ struct EntryWebView: UIViewRepresentable {
     /// 跟网页版同一套映射，这里内联进去。
     private func page(_ body: String) -> String {
         """
-        <!doctype html><html><head><meta charset="utf-8">
+        <!doctype html><html class="\(dark ? "night" : "day")"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <link rel="stylesheet" href="\(Api.base)/res/lm6.css">
         <style>
-        :root{color-scheme:light dark;
-          --ink:#1c2530;--dim:#68788c;--ex:#1a49a6;--num:#1a4f9c;--card:#fff;--line:#dde4ec;--hi:#eef3f9}
-        @media (prefers-color-scheme: dark){:root{
-          --ink:#dde5ee;--dim:#8b9aab;--ex:#8ab4f8;--num:#7fb0f0;--card:#1c1c1e;--line:#333c46;--hi:#2a323b}}
+        html.day{color-scheme:light}
+        html.night{color-scheme:dark}
+        :root{--ink:#1c2530;--dim:#68788c;--ex:#1a49a6;--num:#1a4f9c;--card:#fff;--line:#dde4ec;--hi:#eef3f9}
+        html.night{--ink:#dde5ee;--dim:#8b9aab;--ex:#8ab4f8;--num:#7fb0f0;--card:#1c1c1e;--line:#333c46;--hi:#2a323b}
         body{margin:0;padding:14px 16px 90px;background:transparent;color:var(--ink);
           font:\(fontSize)px/1.85 -apple-system,"PingFang SC",system-ui}
         .entry{color:var(--ink)!important;font-family:inherit!important;line-height:1.85!important}
@@ -213,14 +236,18 @@ struct EntryWebView: UIViewRepresentable {
         a.snd::after{content:"";position:absolute;left:9px;top:7px;border-style:solid;
           border-width:6px 0 6px 9px;border-color:transparent transparent transparent var(--ex)}
         img{max-width:100%;height:auto}
-        @media (prefers-color-scheme: dark){
-          .collobox .section,.thesbox .section,.collocations .section,.thesaurus .section,
-          .usagebox .expl,.grambox .expl{background-color:var(--hi)!important;color:var(--ink)!important}
-          .gloss,.collgloss,.neutral,.italic,.entry{color:var(--ink)!important}
-          .colloc,.keycollo,.deriv,.phrvbhwd,.homnum{color:var(--ex)!important}
-          .gram,.pos{color:#6fce8f!important} .geo,.registerlab{color:#c9a3e6!important}
-          .freq,.level,.frequent,.cross{color:#ef6a63!important}
-        }
+        /* 词典自带的 css 是照白纸写的，夜间要把写死的黑字和浅色框整体换掉 */
+        html.night .collobox .section,html.night .thesbox .section,
+        html.night .collocations .section,html.night .thesaurus .section,
+        html.night .usagebox .expl,html.night .grambox .expl{
+          background-color:var(--hi)!important;color:var(--ink)!important}
+        html.night .gloss,html.night .collgloss,html.night .neutral,
+        html.night .italic,html.night .entry{color:var(--ink)!important}
+        html.night .colloc,html.night .keycollo,html.night .deriv,
+        html.night .phrvbhwd,html.night .homnum{color:var(--ex)!important}
+        html.night .gram,html.night .pos{color:#6fce8f!important}
+        html.night .geo,html.night .registerlab{color:#c9a3e6!important}
+        html.night .freq,html.night .level,html.night .frequent,html.night .cross{color:#ef6a63!important}
         </style></head><body>\(body)
         <script>
         document.addEventListener("click", function(e){
@@ -246,6 +273,7 @@ struct EntryWebView: UIViewRepresentable {
         let parent: EntryWebView
         var lastHTML = ""
         var lastFont: Double = 0
+        var lastDark: Bool?
         init(_ p: EntryWebView) {
             parent = p
             super.init()
