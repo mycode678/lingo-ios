@@ -38,6 +38,8 @@ struct DrillScreen: View {
     /// 倍速档位自己定：慢到 0.4 快到 2.0，几档也自己定（2~5 档）。
     /// 存成一串逗号分隔的数，简单、好迁移；解析不出来就退回默认四档。
     @AppStorage("drill.rates") private var ratesCSV = "1.0,0.75,0.6,0.5"
+    /// 四档之外的那个"自定"：想要 0.85、1.25 这种随手加一个，不用动前面四档
+    @AppStorage("drill.customRate") private var customRate = 0.0
 
     @State private var showText = true
     @State private var showWalk = false
@@ -45,7 +47,8 @@ struct DrillScreen: View {
     @State private var showStyle = false
     @State private var showList = false
     @State private var showGap = false          // 播放间隔的小面板
-    @State private var editRate: Int?           // 正在改第几档速度
+    @State private var editRate: Int?           // 正在改第几档速度（-1＝那个自定义档）
+    @State private var showLoop = false         // 循环遍数面板
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
     /// 不能用 flash：换句子时 .task 会把 flash 清掉，提示还没看见就没了。
@@ -61,6 +64,7 @@ struct DrillScreen: View {
             .sheet(isPresented: $showMore) { settingsSheet }
             .sheet(isPresented: $showStyle) { styleSheet }
             .sheet(isPresented: $showGap) { gapSheet }
+            .sheet(isPresented: $showLoop) { loopSheet }
             .sheet(isPresented: Binding(get: { editRate != nil },
                                         set: { if !$0 { editRate = nil } })) { rateSheet }
             .sheet(isPresented: $showList) {
@@ -155,6 +159,17 @@ struct DrillScreen: View {
                 transport
             }
             .frame(width: geo.size.width)
+        }
+        .onAppear {
+            // 复习页和精听页共用一个播放器：在复习里放过 A 句，回到精听页时
+            // 播放器里装的还是 A，点播放就放错人。切回来先对一下是不是当前这句。
+            guard player.loadedSrc != s.src else { return }
+            Task {
+                player.pause()
+                try? await Player.shared.load(src: s.src)
+                player.claim(loop: player.loop, times: loopTimes, segment: vm.selection,
+                             onEnd: { autoAdvance(after: s.src) })
+            }
         }
         .task(id: s.src) {
             await vm.load(s)
@@ -319,6 +334,20 @@ struct DrillScreen: View {
     private var nearestRate: Double {
         rates.min(by: { abs($0 - Double(player.rate)) < abs($1 - Double(player.rate)) }) ?? 1.0
     }
+    private func rateChip(_ label: String, on: Bool,
+                          tap: @escaping () -> Void, hold: @escaping () -> Void) -> some View {
+        Text(label)
+            .font(.system(size: 13, weight: on ? .semibold : .regular))
+            .monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
+            .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.75))
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .background(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture(perform: tap)
+            .onLongPressGesture(minimumDuration: 0.4, perform: hold)
+    }
+
     private func setRate(_ i: Int, _ v: Double) {
         var a = rates
         guard a.indices.contains(i) else { return }
@@ -504,10 +533,17 @@ struct DrillScreen: View {
                 .disabled(vm.selection == nil)
                 .opacity(vm.selection == nil ? 0.35 : 1)
 
+                // 点＝开关循环，长按＝选循环几遍
                 Button { player.loop.toggle(); player.loop ? player.play() : player.pause() } label: {
-                    Image(systemName: "repeat")
+                    HStack(spacing: 2) {
+                        Image(systemName: "repeat")
+                        if player.loop && loopTimes > 0 {
+                            Text("\(loopTimes)").font(.system(size: 10, weight: .semibold))
+                        }
+                    }
                 }
                 .buttonStyle(IconButton(on: player.loop))
+                .onLongPressGesture(minimumDuration: 0.4) { showLoop = true }
 
                 Button {
                     rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
@@ -554,21 +590,20 @@ struct DrillScreen: View {
                 // 不用 segmented Picker 是因为它没法长按；档位数固定四个，够用。
                 HStack(spacing: 5) {
                     ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
-                        let on = abs(r - nearestRate) < 0.001
-                        Text(rateLabel(r))
-                            .font(.system(size: 13, weight: on ? .semibold : .regular))
-                            .monospacedDigit()
-                            .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.75))
-                            .frame(maxWidth: .infinity, minHeight: 32)
-                            .background(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                player.rate = Float(r)
-                                if player.isPlaying { player.play() }
-                            }
-                            .onLongPressGesture(minimumDuration: 0.4) { editRate = i }
+                        rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001,
+                                 tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
+                                 hold: { editRate = i })
                     }
+                    // 第五个：自己填一个速度（0.85、1.25 这种），不动前面四档
+                    rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
+                             on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001,
+                             tap: {
+                                 if customRate > 0 {
+                                     player.rate = Float(customRate)
+                                     if player.isPlaying { player.play() }
+                                 } else { editRate = -1 }
+                             },
+                             hold: { editRate = -1 })
                 }
             }
             .padding(.horizontal, T.side)
@@ -629,17 +664,66 @@ struct DrillScreen: View {
         .presentationDetents([.height(260)])
     }
 
+    private var loopSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach([0, 2, 3, 5, 10], id: \.self) { n in
+                        Button {
+                            loopTimes = n; player.loopTimes = n
+                            if !player.loop { player.loop = true; player.play() }
+                            showLoop = false
+                        } label: {
+                            HStack {
+                                Text(n == 0 ? "一直循环，直到我停" : "循环 \(n) 遍")
+                                Spacer()
+                                if loopTimes == n { Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor) }
+                            }
+                        }
+                        .foregroundStyle(Color.primary)
+                    }
+                    Stepper(value: Binding(get: { max(2, loopTimes) },
+                                           set: { loopTimes = $0; player.loopTimes = $0 }),
+                            in: 2...50) {
+                        HStack { Text("自己定")
+                            Spacer()
+                            Text("\(max(2, loopTimes)) 遍").foregroundStyle(.secondary).monospacedDigit() }
+                    }
+                } footer: {
+                    Text("循环键长按就能到这儿。设了遍数以后，循环键上会显示数字。")
+                }
+            }
+            .navigationTitle("循环几遍")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
+                Button("完成") { showLoop = false } } }
+        }
+        .presentationDetents([.height(400)])
+    }
+
     private var rateSheet: some View {
         let i = editRate ?? 0
+        let custom = (i < 0)
         return NavigationStack {
             Form {
                 Section {
-                    numberRow("速度", Binding(
-                        get: { rates.indices.contains(i) ? rates[i] : 1.0 },
-                        set: { setRate(i, $0) }), 0.4...2.0, "倍")
+                    numberRow("速度", custom
+                        ? Binding(get: { customRate > 0 ? customRate : 0.85 },
+                                  set: { customRate = ($0 * 100).rounded() / 100 })
+                        : Binding(get: { rates.indices.contains(i) ? rates[i] : 1.0 },
+                                  set: { setRate(i, $0) }), 0.4...2.0, "倍")
+                    if custom {
+                        Button("就用这个速度") {
+                            if customRate > 0 { player.rate = Float(customRate)
+                                                if player.isPlaying { player.play() } }
+                            editRate = nil
+                        }
+                    }
                 } footer: {
-                    Text("底部那一排任意一档长按就能改。慢到 0.4 快到 2.0，"
-                         + "中间的数字点开可以直接打。")
+                    Text(custom
+                         ? "填一个前面四档没有的速度，比如 0.85、1.25。填好点一下那个格子就能用。"
+                         : "底部那一排任意一档长按就能改。慢到 0.4 快到 2.0，中间的数字点开可以直接打。")
                 }
                 Section {
                     Button("四档恢复默认（1x / 0.75x / 0.6x / 0.5x）") {
@@ -648,7 +732,7 @@ struct DrillScreen: View {
                     }
                 }
             }
-            .navigationTitle("第 \(i + 1) 档速度")
+            .navigationTitle(custom ? "自定速度" : "第 \(i + 1) 档速度")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
                 Button("完成") { editRate = nil } } }

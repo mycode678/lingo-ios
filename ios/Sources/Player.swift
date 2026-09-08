@@ -15,6 +15,9 @@ final class Player: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var position: Double = 0      // 当前播放到第几秒（原始时间轴）
     @Published private(set) var duration: Double = 0
+    /// 现在装在播放器里的是哪一句 —— 复习页和精听页共用同一个播放器，
+    /// 回到精听页时得知道"里面还是复习那句"，不然点播放放的是别人的句子。
+    @Published private(set) var loadedSrc: String?
     @Published var rate: Float = 1.0 { didSet { pitch.rate = max(0.35, min(2, rate)) } }
     @Published var loop = false                            // 循环当前这一段
     /// 循环几遍就停；0 = 一直循环。PC 版精练台有"每句 N 遍"，这里照搬。
@@ -86,8 +89,10 @@ final class Player: ObservableObject {
             duration = Double(pcm.count) / sampleRate
             position = 0; segment = nil
             if !engine.isRunning { engine.prepare(); try? engine.start() }
+            loadedSrc = src
             return
         }
+        let path = src                      // 下面 let src = f.processingFormat 会把参数挡住
         let url = try await Cache.shared.localURL(for: src)
         let f = try AVAudioFile(forReading: url)
         let src = f.processingFormat
@@ -122,6 +127,7 @@ final class Player: ObservableObject {
         duration = Double(buf.frameLength) / sampleRate
         position = 0
         segment = nil
+        loadedSrc = path
         if !engine.isRunning {
             engine.prepare()
             do { try engine.start() } catch {
