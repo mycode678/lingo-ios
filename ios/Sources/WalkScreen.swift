@@ -165,7 +165,8 @@ struct WalkScreen: View {
         NowPlaying.shared.title = s.en
         NowPlaying.shared.subtitle = (s.grp?.isEmpty == false ? s.grp! : store.word)
         NowPlaying.shared.blind = blind
-        player.loop = false                 // 遍数由这里控制，不用引擎自己的循环
+        player.claim(loop: false, segment: segOnly ? startSegment : nil,
+                     onEnd: { pieceEnded() })   // 遍数由这一屏控制，不用引擎自己的循环
         player.play(from: player.segment?.lowerBound ?? 0)
         NowPlaying.shared.update()
     }

@@ -32,6 +32,7 @@ struct DrillScreen: View {
     @AppStorage("drill.showDef") private var showDef = false
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
+    @AppStorage("drill.boostHF") private var boostHF = false        // 听辅音（高频增强）
 
     @State private var showText = true
     @State private var showWalk = false
@@ -85,8 +86,10 @@ struct DrillScreen: View {
             await vm.load(s)
             vm.snap = snap
             player.gapIn = gapIn
-            player.loopTimes = loopTimes
-            player.onSegmentEnd = { if autoNext { step(1) } }
+            player.claim(loop: player.loop, times: loopTimes,
+                         segment: vm.selection,
+                         onEnd: { if autoNext { step(1) } })
+            player.boostHF = boostHF
             rec.reset()
             showText = true
             flash = nil
@@ -95,6 +98,7 @@ struct DrillScreen: View {
             if autoPlay { player.play(from: vm.selection?.lowerBound ?? 0) }
         }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
+        .onChange(of: boostHF) { _, v in player.boostHF = v }
         .onDisappear {
             player.onSegmentEnd = nil
             VolumeKeys.shared.enable(false)          // 离开就把音量键还给系统
@@ -252,6 +256,14 @@ struct DrillScreen: View {
                     }.buttonStyle(.bordered).controlSize(.small)
                 }
             }
+            if let c = rec.curve {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("语调 · 节奏　蓝＝原声　橙＝你的")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                    CurveView(nat: c.nat, mine: c.mine, rms: c.rms)
+                        .frame(height: 96)
+                }
+            }
             if let m = rec.message { Text(m).font(.system(size: 11)).foregroundStyle(.secondary) }
         }
         .padding(11)
@@ -396,6 +408,11 @@ struct DrillScreen: View {
                 Section("选区") {
                     Toggle("拖动时吸到词边", isOn: $snap)
                     Toggle("记住每句的选区", isOn: $vm.rememberSelection)
+                }
+                Section {
+                    Toggle("听辅音（高频增强）", isOn: $boostHF)
+                } header: { Text("听感") } footer: {
+                    Text("把 2.5kHz 以上抬高一点，句尾的 t/s/k 这些辅音会清楚很多，专抠连读用。")
                 }
                 Section("跟读") { Toggle("录完自动对比播放", isOn: $autoAB) }
                 Section("显示") { Toggle("显示英文释义", isOn: $showDef) }

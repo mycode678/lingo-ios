@@ -34,9 +34,11 @@ actor Cache {
         }
         if let t = inflight[src] { return try await t.value }
         let task = Task<URL, Error> {
+            var req = URLRequest(url: Api.url(src))
+            if let a = Api.authHeader { req.setValue(a, forHTTPHeaderField: "Authorization") }
             let (tmp, _) = try await URLSession(configuration: .default,
                                                 delegate: CertTrust.shared, delegateQueue: nil)
-                .download(from: Api.url(src))
+                .download(for: req)
             try? FileManager.default.removeItem(at: f)
             try FileManager.default.moveItem(at: tmp, to: f)
             return f

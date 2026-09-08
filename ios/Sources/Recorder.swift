@@ -18,6 +18,8 @@ final class Recorder: NSObject, ObservableObject {
     @Published private(set) var wrongWords: [String] = []
     @Published private(set) var score: Score?
     @Published private(set) var message: String?
+    /// 语调曲线：原声和你的，按 DTW 对齐到同一条时间轴上（单位是半音，相对各自的中位数）
+    @Published private(set) var curve: (nat: [Double], mine: [Double?], rms: [Double])?
 
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
@@ -29,6 +31,7 @@ final class Recorder: NSObject, ObservableObject {
         stopPlayback()
         hasTake = false; heard = nil; wrongWords = []; score = nil; message = nil
         heardAttributed = AttributedString("")
+        curve = nil
     }
 
     // MARK: - 录
@@ -92,6 +95,7 @@ final class Recorder: NSObject, ObservableObject {
 
         let A = analyze(nat), B = analyze(mine)
         let g = grade(A, B)
+        curve = buildCurve(A, B, g.path)
         score = Score(words: nil, tone: g.tone, rhythm: g.rhythm)
         message = nil
         if autoAB { playAB(range: range) }
@@ -208,8 +212,19 @@ final class Recorder: NSObject, ObservableObject {
                     dur: Double(R.count) * 0.01)
     }
 
-    private func grade(_ A: Feat, _ B: Feat) -> (tone: Int, rhythm: Int) {
-        guard !A.rms.isEmpty, !B.rms.isEmpty else { return (0, 0) }
+    /// 把 DTW 路径上的对应关系摊平成"每一帧：原声多少半音、你的多少半音"
+    private func buildCurve(_ A: Feat, _ B: Feat, _ path: [(Int, Int)]) -> (nat: [Double], mine: [Double?], rms: [Double])? {
+        guard !A.rel.isEmpty else { return nil }
+        var mine = [Double?](repeating: nil, count: A.rel.count)
+        for (i, j) in path where mine[i] == nil {
+            mine[i] = B.rel[j].isNaN ? nil : Double(B.rel[j])
+        }
+        return (A.rel.map { $0.isNaN ? Double.nan : Double($0) },
+                mine, A.rms.map { Double($0) })
+    }
+
+    private func grade(_ A: Feat, _ B: Feat) -> (tone: Int, rhythm: Int, path: [(Int, Int)]) {
+        guard !A.rms.isEmpty, !B.rms.isEmpty else { return (0, 0, []) }
         let n = A.rms.count, m = B.rms.count
         var D = [[Double]](repeating: [Double](repeating: .infinity, count: m + 1), count: n + 1)
         D[0][0] = 0
@@ -249,7 +264,7 @@ final class Recorder: NSObject, ObservableObject {
         let ratio = B.dur / max(0.01, A.dur)
         let pen = min(1, abs(log(ratio)) / 0.55)
         let rhythm = max(0, Int(100 * (1 - min(1, d / 0.85)) * (1 - pen * 0.45)))
-        return (max(0, Int(corr * 100)), rhythm)
+        return (max(0, Int(corr * 100)), rhythm, path)
     }
 
     /// 机器听写的结果跟原句逐词比：对的正常显示，错的标红，漏的补出来

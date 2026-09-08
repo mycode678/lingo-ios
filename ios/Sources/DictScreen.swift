@@ -15,6 +15,10 @@ struct DictScreen: View {
     @State private var suggestions: [String] = []
     @State private var showList = false
     @State private var playingSrc: String?
+    @State private var filter = "all"          // 清单过滤：全部/收藏/没练过/有难点/该复习
+    @State private var seqPlaying = false      // 整条连播
+    @AppStorage("dict.rep") private var rep = 2        // 每句几遍
+    @AppStorage("dict.gap") private var gap = 0.8      // 两遍之间
 
     var body: some View {
         NavigationStack {
@@ -27,7 +31,8 @@ struct DictScreen: View {
                                      dark: effectiveDark, onWord: { w in
                             Task { await store.look(w) }
                         }, onSound: { src in
-                            play(src)
+                            if let it = store.items.first(where: { $0.src == src }) { playOne(it) }
+                            else { playRaw(src) }
                         })
                         .ignoresSafeArea(edges: .bottom)
                     }
@@ -123,14 +128,56 @@ struct DictScreen: View {
         .buttonStyle(.plain)
     }
 
+    private var filtered: [(Int, Api.Sentence)] {
+        Array(store.items.enumerated()).filter { _, s in
+            let p = store.prog[s.src]
+            switch filter {
+            case "fav":  return (p?.fav ?? 0) == 1
+            case "new":  return (p?.reps ?? 0) == 0
+            case "mark": return (p?.marks ?? 0) > 0
+            case "due":  return (p?.reps ?? 0) > 0 && (p?.due ?? 0) <= Date().timeIntervalSince1970
+            default:     return true
+            }
+        }
+    }
+
     private var sentenceList: some View {
         NavigationStack {
             List {
-                ForEach(Array(store.items.enumerated()), id: \.element.src) { idx, s in
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach([("all","全部"),("fav","★ 收藏"),("new","没练过"),
+                                     ("mark","有难点"),("due","该复习")], id: \.0) { k, n in
+                                Button { filter = k } label: {
+                                    Text(n).font(.system(size: 12.5))
+                                        .padding(.horizontal, 11).padding(.vertical, 6)
+                                        .background(filter == k ? Color.accentColor : Color(.secondarySystemBackground))
+                                        .foregroundStyle(filter == k ? Color.white : Color.primary)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        Button {
+                            seqPlaying ? stopSequence() : playAll()
+                        } label: {
+                            Label(seqPlaying ? "停止连播" : "整条连播",
+                                  systemImage: seqPlaying ? "stop.fill" : "play.fill")
+                                .font(.system(size: 13))
+                        }
+                        .buttonStyle(.bordered)
+                        Spacer()
+                        Stepper("每句 \(rep) 遍", value: $rep, in: 1...10).font(.system(size: 12.5))
+                    }
+                }
+                ForEach(filtered, id: \.1.src) { idx, s in
                     Section {
                         Button {
                             store.index = idx
-                            play(s.src)
+                            playOne(s)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 6) {
@@ -168,13 +215,52 @@ struct DictScreen: View {
         return Circle().fill(c).frame(width: 8, height: 8)
     }
 
-    private func play(_ src: String) {
-        playingSrc = src
+    /// 点一句：按设定的遍数循环播它（PC 版那颗 ↻ 的手机版）
+    private func playOne(_ s: Api.Sentence) {
+        seqPlaying = false
+        playingSrc = s.src
         Task {
-            try? await Player.shared.load(src: src)
-            Player.shared.setSegment(nil, playNow: false)
+            Player.shared.claim(loop: rep > 1, times: rep, onEnd: { playingSrc = nil })
+            Player.shared.gapIn = gap
+            try? await Player.shared.load(src: s.src)
             Player.shared.play(from: 0)
         }
+    }
+
+    /// 整条连播：这个词（当前过滤下）的例句从上到下依次播，每句 N 遍
+    private func playAll() {
+        let list = filtered.map { $0.1 }
+        guard !list.isEmpty else { return }
+        seqPlaying = true
+        var i = 0
+        func step() {
+            guard seqPlaying, i < list.count else { seqPlaying = false; playingSrc = nil; return }
+            let s = list[i]; i += 1
+            playingSrc = s.src
+            if let k = store.items.firstIndex(where: { $0.src == s.src }) { store.index = k }
+            Task {
+                Player.shared.claim(loop: rep > 1, times: rep, onEnd: { step() })
+                Player.shared.gapIn = gap
+                try? await Player.shared.load(src: s.src)
+                Player.shared.play(from: 0)
+            }
+        }
+        step()
+    }
+    /// 词条里那些不在例句清单里的音频（比如单词读音），直接放一遍
+    private func playRaw(_ src: String) {
+        seqPlaying = false
+        playingSrc = src
+        Task {
+            Player.shared.claim()
+            try? await Player.shared.load(src: src)
+            Player.shared.play(from: 0)
+        }
+    }
+    private func stopSequence() {
+        seqPlaying = false
+        playingSrc = nil
+        Player.shared.claim()
     }
 }
 
@@ -284,11 +370,18 @@ struct EntryWebView: UIViewRepresentable {
                      didReceive challenge: URLAuthenticationChallenge,
                      completionHandler: @escaping (URLSession.AuthChallengeDisposition,
                                                    URLCredential?) -> Void) {
-            guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-                  let t = challenge.protectionSpace.serverTrust,
-                  challenge.protectionSpace.host == URL(string: Api.base)?.host
-            else { completionHandler(.performDefaultHandling, nil); return }
-            completionHandler(.useCredential, URLCredential(trust: t))
+            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+               let t = challenge.protectionSpace.serverTrust,
+               challenge.protectionSpace.host == URL(string: Api.base)?.host {
+                completionHandler(.useCredential, URLCredential(trust: t)); return
+            }
+            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodHTTPBasic,
+               !Api.user.isEmpty {
+                completionHandler(.useCredential,
+                    URLCredential(user: Api.user, password: Api.pass, persistence: .forSession))
+                return
+            }
+            completionHandler(.performDefaultHandling, nil)
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let c = webView.configuration.userContentController

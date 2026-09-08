@@ -23,9 +23,13 @@ final class Player: ObservableObject {
     @Published var gapIn: Double = 0.8                     // 同一段两遍之间停多久
     @Published var segment: ClosedRange<Double>?           // 只播这一段（精听）
 
+    /// 听辅音：把 2.5kHz 以上抬 10dB，句尾的 t/s/k 会清楚很多
+    @Published var boostHF = false { didSet { eq.bands[0].bypass = !boostHF } }
+
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let pitch = AVAudioUnitTimePitch()
+    private let eq = AVAudioUnitEQ(numberOfBands: 1)
     private var buffer: AVAudioPCMBuffer?
     /// 统一的内部格式。词典音频有 22k 单声道也有 44.1k 立体声，
     /// 而 AVAudioPlayerNode 要求"喂进去的 buffer 格式必须跟连线时的格式一致"，
@@ -42,8 +46,12 @@ final class Player: ObservableObject {
     private init() {
         engine.attach(node)
         engine.attach(pitch)
+        engine.attach(eq)
+        let b = eq.bands[0]
+        b.filterType = .highShelf; b.frequency = 2500; b.gain = 10; b.bypass = true
         engine.connect(node, to: pitch, format: fmt)
-        engine.connect(pitch, to: engine.mainMixerNode, format: fmt)
+        engine.connect(pitch, to: eq, format: fmt)
+        engine.connect(eq, to: engine.mainMixerNode, format: fmt)
         pitch.overlap = 8                                  // 慢放时的相位重叠，越大越平滑
         configureSession()
         NotificationCenter.default.addObserver(
@@ -195,6 +203,19 @@ final class Player: ObservableObject {
     }
     func toggle() { isPlaying ? pause() : play() }
     func stop() { pause(); position = (segment?.lowerBound ?? 0) }
+
+    /// **每个界面进来先申明自己要什么**。播放器是全局单例，循环、选区、
+    /// "一段播完干什么"这些状态会从一个界面漏到另一个界面 ——
+    /// 精听台开了循环，切到复习就停不下来，就是这么来的（踩过两次）。
+    func claim(loop: Bool = false, times: Int = 0,
+               segment seg: ClosedRange<Double>? = nil, onEnd: (() -> Void)? = nil) {
+        pause()
+        self.loop = loop
+        self.loopTimes = times
+        self.segment = seg
+        self.onSegmentEnd = onEnd
+        self.played = 0
+    }
     func seek(to t: Double) {
         position = max(0, min(duration, t))
         if isPlaying { play(from: position) }

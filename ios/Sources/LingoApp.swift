@@ -1,11 +1,18 @@
 import SwiftUI
 import AVFoundation
 
+/// 谁在最上面。复习里点"拿去精听"要真的跳到精听台，光换句子不换页等于没反应。
+@MainActor
+final class Nav: ObservableObject {
+    static let shared = Nav()
+    @Published var tab = 0          // 0 查词 1 精听 2 复习 3 我的库
+}
+
 @main
 struct LingoApp: App {
     @StateObject private var store = Store.shared
     @StateObject private var player = Player.shared
-    @State private var tab = 0
+    @StateObject private var nav = Nav.shared
     @AppStorage("ui.accent") private var accent = "#2f6fd0"
     @AppStorage("ui.scheme") private var scheme = "system"
 
@@ -15,7 +22,7 @@ struct LingoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            TabView(selection: $tab) {
+            TabView(selection: $nav.tab) {
                 DictScreen().tabItem { Label("查词", systemImage: "magnifyingglass") }.tag(0)
                 DrillScreen().tabItem { Label("精听", systemImage: "waveform") }.tag(1)
                 ReviewScreen().tabItem { Label("复习", systemImage: "arrow.triangle.2.circlepath") }
@@ -24,6 +31,7 @@ struct LingoApp: App {
             }
             .environmentObject(store)
             .environmentObject(player)
+            .environmentObject(nav)
             .tint(Color(hex: accent))
             .preferredColorScheme(scheme == "light" ? .light : (scheme == "dark" ? .dark : nil))
             .task {

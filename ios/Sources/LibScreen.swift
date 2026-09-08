@@ -6,6 +6,7 @@ struct LibScreen: View {
     @State private var lib: Api.LibResp?
     @State private var loading = true
     @State private var cacheMB = 0.0
+    @State private var heat: [Int: Int] = [:]
     @State private var showSettings = false
 
     var body: some View {
@@ -45,6 +46,11 @@ struct LibScreen: View {
                         }
                         .buttonStyle(.plain)
                     }
+                }
+                Section("最近 30 天") {
+                    HeatStrip(days: heat)
+                        .frame(height: 34)
+                        .padding(.vertical, 2)
                 }
                 Section("离线") {
                     HStack {
@@ -90,6 +96,7 @@ struct LibScreen: View {
     private func load() async {
         loading = true
         lib = try? await Api.lib()
+        heat = (try? await Api.heat()) ?? [:]
         loading = false
         await store.loadDueCount()
     }
@@ -101,6 +108,8 @@ struct LibScreen: View {
 struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var base = Api.base
+    @State private var user = Api.user
+    @State private var pass = Api.pass
     @State private var testing = false
     @State private var result: String?
     @AppStorage("ui.entryFont") private var entryFont = 17.0
@@ -124,6 +133,8 @@ struct SettingsScreen: View {
                         .keyboardType(.URL)
                     Button(testing ? "连接中…" : "保存并测试") {
                         Api.base = base.trimmingCharacters(in: .whitespaces)
+                        Api.user = user.trimmingCharacters(in: .whitespaces)
+                        Api.pass = pass
                         testing = true
                         Task {
                             do {
@@ -136,6 +147,9 @@ struct SettingsScreen: View {
                         }
                     }
                     if let r = result { Text(r).font(.caption).foregroundStyle(.secondary) }
+                    TextField("账号（局域网留空）", text: $user)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SecureField("密码", text: $pass)
                 } header: {
                     Text("服务器")
                 } footer: {
@@ -209,5 +223,26 @@ extension Color {
                   red: Double((n >> 16) & 0xff) / 255,
                   green: Double((n >> 8) & 0xff) / 255,
                   blue: Double(n & 0xff) / 255)
+    }
+}
+
+
+/// 30 天练习热力图：越绿练得越多，一眼看出有没有断更
+struct HeatStrip: View {
+    var days: [Int: Int]
+    var body: some View {
+        let today = Int(Date().timeIntervalSince1970 / 86400)
+        let maxN = max(1, days.values.max() ?? 1)
+        HStack(spacing: 3) {
+            ForEach((0..<30).reversed(), id: \.self) { back in
+                let d = today - back
+                let n = days[d] ?? 0
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(n == 0 ? Color(.tertiarySystemFill)
+                                 : Color.green.opacity(0.25 + 0.75 * Double(n) / Double(maxN)))
+                    .frame(maxWidth: .infinity)
+                    .help("\(n) 次")
+            }
+        }
     }
 }

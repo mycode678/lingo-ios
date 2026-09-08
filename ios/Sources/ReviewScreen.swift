@@ -128,10 +128,7 @@ struct ReviewScreen: View {
     private func load() async {
         // 复习这一屏自己说了算：把精听台留下的循环、选区、"播完干什么"全清掉，
         // 不然会一直自动播、还停不下来（踩过）
-        player.loop = false
-        player.loopTimes = 0
-        player.onSegmentEnd = nil
-        player.setSegment(nil, playNow: false)
+        player.claim()          // 复习：不循环、不带选区、播完什么也不干
         loading = true
         queue = (try? await Api.due(40)) ?? []
         i = 0; shown = false; toast = nil
@@ -154,8 +151,10 @@ struct ReviewScreen: View {
     /// 这句听不明白 —— 直接拿到精听台上抠
     private func toDrill(_ c: Api.Card) {
         Task {
+            player.pause()
             if let w = c.word, store.word != w { await store.look(w) }
             if let idx = store.items.firstIndex(where: { $0.src == c.src }) { store.index = idx }
+            Nav.shared.tab = 1                     // 真的跳到精听台
         }
     }
 }

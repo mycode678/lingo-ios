@@ -8,6 +8,20 @@ enum Api {
         get { UserDefaults.standard.string(forKey: "serverBase") ?? "https://192.168.8.191:8445" }
         set { UserDefaults.standard.set(newValue, forKey: "serverBase") }
     }
+    /// 公网（Cloudflare 隧道）走 Basic Auth；家里局域网服务器放行，留空即可
+    static var user: String {
+        get { UserDefaults.standard.string(forKey: "authUser") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "authUser") }
+    }
+    static var pass: String {
+        get { UserDefaults.standard.string(forKey: "authPass") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "authPass") }
+    }
+    static var authHeader: String? {
+        guard !user.isEmpty else { return nil }
+        let raw = "\(user):\(pass)".data(using: .utf8)!.base64EncodedString()
+        return "Basic " + raw
+    }
 
     static func url(_ path: String) -> URL {
         URL(string: base + path)!
@@ -86,7 +100,9 @@ enum Api {
     }()
 
     static func get<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
-        let (d, _) = try await session.data(from: url(path))
+        var r = URLRequest(url: url(path))
+        if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
+        let (d, _) = try await session.data(for: r)
         return try JSONDecoder().decode(T.self, from: d)
     }
 
@@ -95,6 +111,7 @@ enum Api {
         var r = URLRequest(url: url(path))
         r.httpMethod = "POST"
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
         r.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (d, _) = try await session.data(for: r)
         return try JSONDecoder().decode(T.self, from: d)
@@ -143,6 +160,11 @@ enum Api {
         _ = try await post("/api/word", ["w": w, "on": true], as: OK.self)
     }
     static func lib() async throws -> LibResp { try await get("/api/lib", as: LibResp.self) }
+    static func heat() async throws -> [Int: Int] {
+        struct R: Codable { var days: [String: Int] }
+        let r = try await get("/api/heat?days=30", as: R.self)
+        return Dictionary(uniqueKeysWithValues: r.days.compactMap { k, v in Int(k).map { ($0, v) } })
+    }
     static func counts() async throws -> Counts { try await get("/api/counts", as: Counts.self) }
     static func hist() async throws -> [HistWord] {
         try await get("/api/hist?n=40", as: HistResp.self).words
@@ -158,6 +180,7 @@ enum Api {
         if let s = score { c.queryItems?.append(.init(name: "score", value: String(s))) }
         var r = URLRequest(url: c.url!)
         r.httpMethod = "POST"
+        if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
         r.httpBody = data
         _ = try? await session.data(for: r)
     }
@@ -176,6 +199,7 @@ enum Api {
         var r = URLRequest(url: url("/asr/inference"))
         r.httpMethod = "POST"
         r.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
         r.httpBody = body
         r.timeoutInterval = 120
         let (d, _) = try await session.data(for: r)
@@ -196,11 +220,19 @@ final class CertTrust: NSObject, URLSessionDelegate {
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition,
                                                   URLCredential?) -> Void) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust,
-              let host = URL(string: Api.base)?.host,
-              challenge.protectionSpace.host == host
-        else { completionHandler(.performDefaultHandling, nil); return }
-        completionHandler(.useCredential, URLCredential(trust: trust))
+        // 自签证书：只对配置里那台放行
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust,
+           challenge.protectionSpace.host == URL(string: Api.base)?.host {
+            completionHandler(.useCredential, URLCredential(trust: trust)); return
+        }
+        // 公网上的 Basic Auth
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodHTTPBasic,
+           !Api.user.isEmpty {
+            completionHandler(.useCredential,
+                URLCredential(user: Api.user, password: Api.pass, persistence: .forSession))
+            return
+        }
+        completionHandler(.performDefaultHandling, nil)
     }
 }
