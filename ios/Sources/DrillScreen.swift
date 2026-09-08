@@ -197,6 +197,11 @@ struct DrillScreen: View {
             controlStrip
             gradeRow(38)
         }
+        // 宽度必须锁死在屏宽上：SwiftUI 里竖列的宽度＝最宽那个子视图的**理想**宽度，
+        // 里面那条横滑控制条的理想宽度是"所有按钮排开"，于是整列被撑宽，
+        // 滑条自己觉得"我已经全展开了"就不滚了，右边的按钮直接被裁掉
+        // （竖屏那列早就锁了宽，所以只有横屏出这个毛病）。
+        .frame(width: geo.size.width)
         .padding(.bottom, 2)
         .overlay {
             if let h = stepHint {
