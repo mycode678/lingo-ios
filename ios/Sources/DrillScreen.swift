@@ -16,28 +16,19 @@ struct DrillScreen: View {
     @AppStorage("drill.times") private var loopTimes = 0            // 循环几遍，0=一直
     @AppStorage("drill.snap") private var snap = true               // 拖选区吸到词边
     @AppStorage("drill.autoAB") private var autoAB = true           // 录完自动对比播放
-    @AppStorage("drill.showDef") private var showDef = true         // 显示英文释义
+    @AppStorage("drill.showDef") private var showDef = false        // 英文释义默认收起，小屏放不下
 
     @State private var showText = true
     @State private var showWalk = false
     @State private var showMore = false
-    @State private var graded: String?
+    @State private var flash: String?          // 一闪而过的提示，不常驻占地方
 
     var body: some View {
         NavigationStack {
             Group {
                 if let s = store.current { content(s) } else { empty }
             }
-            .navigationTitle("精听")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showMore = true } label: { Image(systemName: "slider.horizontal.3") }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showWalk = true } label: { Image(systemName: "headphones") }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)     // 手机上这 44 点留给波形更值
             .sheet(isPresented: $showWalk) { WalkScreen(startSegment: vm.selection) }
             .sheet(isPresented: $showMore) { settingsSheet }
         }
@@ -74,7 +65,7 @@ struct DrillScreen: View {
             player.onSegmentEnd = { advanceIfWanted() }
             rec.reset()
             showText = true
-            graded = nil
+            flash = nil
         }
         .onDisappear { player.onSegmentEnd = nil }
     }
@@ -84,47 +75,46 @@ struct DrillScreen: View {
     private func waveBlock(_ s: Api.Sentence) -> some View {
         VStack(spacing: 0) {
             // 上下句就贴在波形上沿，不用滚到顶
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button { step(-1) } label: {
-                    Image(systemName: "chevron.left").frame(width: 46, height: 34)
+                    Image(systemName: "chevron.left").frame(width: 42, height: 32)
                 }
                 .buttonStyle(.bordered).disabled(store.index == 0)
                 Text(store.word).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                 Text("\(store.index + 1)/\(store.items.count)")
                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                Spacer()
                 if vm.loading { ProgressView().controlSize(.small) }
+                Spacer()
+                Button { showWalk = true } label: {
+                    Image(systemName: "headphones").frame(width: 38, height: 32)
+                }.buttonStyle(.bordered)
+                Button { showMore = true } label: {
+                    Image(systemName: "slider.horizontal.3").frame(width: 38, height: 32)
+                }.buttonStyle(.bordered)
                 Button { step(1) } label: {
-                    Image(systemName: "chevron.right").frame(width: 46, height: 34)
+                    Image(systemName: "chevron.right").frame(width: 42, height: 32)
                 }
                 .buttonStyle(.bordered).disabled(store.index >= store.items.count - 1)
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
+            .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 5)
 
             WaveView(vm: vm)
                 .frame(height: 200)
                 .frame(maxWidth: .infinity)      // 顶满宽度，手机上寸土寸金
 
-            HStack(spacing: 10) {
-                Text(fmt(player.position)).monospacedDigit()
-                Text("/").foregroundStyle(.secondary)
-                Text(fmt(player.duration)).monospacedDigit().foregroundStyle(.secondary)
-                Spacer()
+            HStack(spacing: 8) {
                 if let sel = vm.selection {
-                    Text(String(format: "选区 %.2fs", sel.upperBound - sel.lowerBound)).monospacedDigit()
-                } else {
-                    Text("整句").foregroundStyle(.secondary)
+                    Text(String(format: "选区 %.2f–%.2fs", sel.lowerBound, sel.upperBound))
+                        .monospacedDigit().foregroundStyle(Color.accentColor)
                 }
                 if !vm.marks.isEmpty { Text("难点\(vm.marks.count)").foregroundStyle(.red) }
+                Spacer()
+                if let t = flash { Text(t).foregroundStyle(.secondary) }
+                else if !vm.note.isEmpty { Text(vm.note).foregroundStyle(.secondary).lineLimit(1) }
             }
             .font(.caption)
-            .padding(.horizontal, 10).padding(.top, 5)
-
-            if !vm.note.isEmpty {
-                Text(vm.note).font(.caption2).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10).padding(.top, 3)
-            }
+            .padding(.horizontal, 10).padding(.top, 4)
+            .frame(height: 16)
         }
     }
 
@@ -165,9 +155,6 @@ struct DrillScreen: View {
             }
             if showDef, let d = s.dfe, !d.isEmpty {
                 Text(d).font(.system(size: sentFont - 7)).foregroundStyle(.tertiary)
-            }
-            if let g = s.grp, !g.isEmpty {
-                Text(g).font(.caption2).foregroundStyle(.tertiary).lineLimit(2)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -252,16 +239,9 @@ struct DrillScreen: View {
     }
 
     private func gradeRow(_ s: Api.Sentence) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text("练完打个分，决定下次什么时候再问你").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                if let g = graded { Text(g).font(.caption2).foregroundStyle(.secondary) }
-            }
-            HStack(spacing: 7) {
-                grade(1, "没听懂", .red); grade(2, "勉强", .orange)
-                grade(3, "会了", .blue); grade(4, "脱口而出", .green)
-            }
+        HStack(spacing: 7) {
+            grade(1, "没听懂", .red); grade(2, "勉强", .orange)
+            grade(3, "会了", .blue); grade(4, "脱口而出", .green)
         }
         .padding(.horizontal, 8)
     }
@@ -272,7 +252,7 @@ struct DrillScreen: View {
                 if let r = try? await Api.grade(s.src, q, score: rec.score.map { Double($0.overall) },
                                                 meta: store.meta(s)) {
                     let d = (r.card.due - Date().timeIntervalSince1970) / 86400
-                    graded = d < 1 ? "下次 \(max(1, Int(d * 24))) 小时后" : "下次 \(Int(d.rounded())) 天后"
+                    showFlash(d < 1 ? "下次 \(max(1, Int(d * 24))) 小时后" : "下次 \(Int(d.rounded())) 天后")
                     await store.refreshProgress()
                 }
                 if autoNext { step(1) }
@@ -335,22 +315,12 @@ struct DrillScreen: View {
                     Label("下一处", systemImage: "arrow.right.to.line").font(.system(size: 12.5))
                         .frame(maxWidth: .infinity, minHeight: 38)
                 }.buttonStyle(.bordered).disabled(vm.marks.isEmpty)
-                Menu {
-                    Picker("循环间隔", selection: $gapIn) {
-                        ForEach([0.3, 0.5, 0.8, 1.2, 2.0], id: \.self) { Text("\($0, specifier: "%.1f") 秒").tag($0) }
-                    }
-                    Picker("循环遍数", selection: $loopTimes) {
-                        Text("一直循环").tag(0)
-                        ForEach([2, 3, 5, 10], id: \.self) { Text("\($0) 遍").tag($0) }
-                    }
-                    Toggle("自动下一句", isOn: $autoNext)
-                    Toggle("拖动贴词边", isOn: $snap)
-                    Toggle("录完自动对比", isOn: $autoAB)
-                } label: {
-                    Label("间隔 \(gapIn, specifier: "%.1f")s", systemImage: "timer")
-                        .font(.system(size: 12.5)).frame(maxWidth: .infinity, minHeight: 38)
+                if rec.hasTake {
+                    Button { rec.playAB(range: vm.selection) } label: {
+                        Label("对比", systemImage: "arrow.left.arrow.right").font(.system(size: 12.5))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                    }.buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
         }
         .padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 4)
@@ -414,9 +384,13 @@ struct DrillScreen: View {
         guard i != store.index else { return }
         player.pause()
         store.index = i
-        graded = nil
+        flash = nil
         showText = true
         rec.reset()
+    }
+    private func showFlash(_ t: String) {
+        flash = t
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { if flash == t { flash = nil } }
     }
     private func fmt(_ t: Double) -> String {
         String(format: "%d:%05.2f", Int(t) / 60, t.truncatingRemainder(dividingBy: 60))
