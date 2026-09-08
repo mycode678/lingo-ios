@@ -36,23 +36,28 @@ jobs:
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
           echo "app=$APP"
           mkdir -p shots
-          shoot () {   # $1=设备 $2=屏名
-            DEV="$1"; SCREEN="$2"
+          # $1=设备 $2=屏名 $3=light|dark $4=额外参数(比如 -select)
+          shoot () {
+            DEV="$1"; SCREEN="$2"; MODE="${3:-light}"; EXTRA="${4:-}"
             UDID=$(xcrun simctl list devices available | grep -m1 "$DEV (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
             [ -z "$UDID" ] && { echo "找不到 $DEV"; return; }
-            xcrun simctl boot "$UDID" || true
+            xcrun simctl boot "$UDID" 2>/dev/null || true
             xcrun simctl bootstatus "$UDID" -b || true
-            xcrun simctl uninstall "$UDID" com.lingo.listen || true
+            xcrun simctl ui "$UDID" appearance "$MODE" || true
             xcrun simctl install "$UDID" "$APP"
-            xcrun simctl launch "$UDID" com.lingo.listen -demo -screen "$SCREEN" || true
-            sleep 6
-            xcrun simctl io "$UDID" screenshot "shots/${DEV// /_}-${SCREEN}.png" || true
-            xcrun simctl terminate "$UDID" com.lingo.listen || true
+            xcrun simctl launch "$UDID" com.lingo.listen -demo -screen "$SCREEN" $EXTRA || true
+            sleep 5
+            xcrun simctl io "$UDID" screenshot "shots/${DEV// /_}-${SCREEN}-${MODE}${EXTRA}.png" || true
+            xcrun simctl terminate "$UDID" com.lingo.listen 2>/dev/null || true
           }
-          for S in dict drill review lib; do
-            shoot "iPhone 15 Pro Max" "$S"
+          # 同一台机器不反复重启，省一大半时间
+          for S in drill dict review lib; do
+            shoot "iPhone 15 Pro Max" "$S" light
           done
-          shoot "iPhone SE (3rd generation)" "drill"
+          shoot "iPhone 15 Pro Max" "drill" dark
+          shoot "iPhone 15 Pro Max" "drill" light "-select"
+          shoot "iPhone SE (3rd generation)" "drill" light
+          shoot "iPhone SE (3rd generation)" "drill" light "-select"
           ls -la shots
 
       - uses: actions/upload-artifact@v4

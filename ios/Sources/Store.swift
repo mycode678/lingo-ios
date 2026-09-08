@@ -109,6 +109,11 @@ final class DrillModel: ObservableObject {
             words = Demo.words[min(max(0, i - 1), Demo.words.count - 1)]
             chunks = Self.cutChunks(words)
             marks = []
+            if Demo.preselect, chunks.count > 1 {
+                let c = chunks[1]
+                selection = words[c.0].s...words[c.1].e
+                Player.shared.setSegment(selection, playNow: false)
+            }
             loading = false
             return
         }

@@ -14,6 +14,8 @@ enum Demo {
     }
 
     static let word = "excuse"
+    /// -select 1 时预先圈一段，方便截图看"有选区"的样子
+    static var preselect: Bool { ProcessInfo.processInfo.arguments.contains("-select") }
 
     static let sentences: [Api.Sentence] = [
         .init(src: "/demo/1.mp3",
