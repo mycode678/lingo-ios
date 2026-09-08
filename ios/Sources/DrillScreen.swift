@@ -240,9 +240,15 @@ struct DrillScreen: View {
         VStack(spacing: 2) {
             Text(v == nil ? "…" : "\(v!)")
                 .font(.system(size: 26, weight: .semibold)).monospacedDigit()
-                .foregroundStyle(v == nil ? .secondary : (v! >= 75 ? .green : (v! >= 55 ? .orange : .red)))
+                .foregroundStyle(scoreColor(v))
             Text(k).font(.caption2).foregroundStyle(.secondary)
         }
+    }
+
+    /// 三元里混 .secondary（层级样式）和 .green（颜色）类型对不上，拆成函数
+    private func scoreColor(_ v: Int?) -> Color {
+        guard let v else { return .secondary }
+        return v >= 75 ? .green : (v >= 55 ? .orange : .red)
     }
 
     private func gradeRow(_ s: Api.Sentence) -> some View {

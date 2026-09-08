@@ -255,8 +255,10 @@ final class Recorder: NSObject, ObservableObject {
     /// 机器听写的结果跟原句逐词比：对的正常显示，错的标红，漏的补出来
     private func compare(ref: String, hyp: String) -> (AttributedString, [String], Int) {
         func norm(_ s: String) -> [String] {
-            s.lowercased().map { $0.isLetter || $0.isNumber || $0 == "'" ? $0 : " " }
-                .split(separator: " ").map(String.init)
+            let cleaned = String(s.lowercased().map { ch -> Character in
+                (ch.isLetter || ch.isNumber || ch == "'") ? ch : " "
+            })
+            return cleaned.split(separator: " ").map(String.init)
         }
         let R = norm(ref), H = norm(hyp)
         let n = R.count, m = H.count
@@ -283,7 +285,7 @@ final class Recorder: NSObject, ObservableObject {
             case "d": piece = AttributedString("[漏:" + R[ri] + "] ")
                       piece.foregroundColor = .red; wrong.append(R[ri])
             case "i": piece = AttributedString(H[hi] + " ")
-                      piece.foregroundColor = .orange; piece.strikethroughStyle = .single
+                      piece.foregroundColor = .orange; piece.strikethroughStyle = Text.LineStyle.single
                       wrong.append(H[hi])
             default:  piece = AttributedString(H[hi] + " ")
                       piece.foregroundColor = .red; wrong.append(R[ri])
