@@ -23,6 +23,9 @@ final class WaveUIView: UIView {
     var words: [Api.Word] = []
     var marks: [Api.Mark] = []
     var snapEnabled = true
+    /// 我的录音（16k），有就在原声下面画一条，起点对齐选区开头
+    var mePcm: [Float] = []
+    var meStart: Double = 0
 
     // 回调
     var onNeedEnvelope: ((Int, Double, Double) -> [(Float, Float)])?
@@ -169,7 +172,10 @@ final class WaveUIView: UIView {
         let rowH: CGFloat = words.isEmpty ? 0 : ROW
         let laneTop = rowH
         let laneBot = bounds.height - RULER
-        let laneH = laneBot - laneTop
+        let hasMe = mePcm.count > 800
+        let laneH = (laneBot - laneTop) * (hasMe ? 0.62 : 1)
+        let meTop = laneTop + laneH
+        let meH = laneBot - meTop
 
         // 词条行：底色跟波形一致，只有"正在播的词"和"选区里的词"才上色 ——
         // 每个词都涂一块的话，词一多就是一排脏色块（截图里看着很糙）
@@ -219,6 +225,33 @@ final class WaveUIView: UIView {
             let y1 = mid - CGFloat(hi) * (laneH / 2 - 4)
             let y2 = mid - CGFloat(lo) * (laneH / 2 - 4)
             ctx.fill(CGRect(x: CGFloat(i), y: y1, width: 1, height: max(1, y2 - y1)))
+        }
+
+        // 我的录音：跟原声共用一条秒数轴，念得慢尾巴就伸出去，一眼看得见
+        if hasMe {
+            ctx.setFillColor(C.bgMe.cgColor)
+            ctx.fill(CGRect(x: 0, y: meTop, width: W, height: meH))
+            ctx.setStrokeColor(C.grid.cgColor); ctx.setLineWidth(1)
+            ctx.move(to: CGPoint(x: 0, y: meTop + 0.5)); ctx.addLine(to: CGPoint(x: W, y: meTop + 0.5))
+            ctx.strokePath()
+            let mid = meTop + meH / 2
+            let sr = 16000.0
+            ctx.setFillColor(C.waveMe.cgColor)
+            for px in 0..<Int(W) {
+                let t0 = t(CGFloat(px)) - meStart, t1 = t(CGFloat(px + 1)) - meStart
+                var i0 = Int(t0 * sr), i1 = Int(t1 * sr)
+                if i1 <= 0 || i0 >= mePcm.count { continue }
+                i0 = max(0, i0); i1 = min(mePcm.count, max(i0 + 1, i1))
+                var lo: Float = 0, hi: Float = 0
+                var i = i0
+                let step = max(1, (i1 - i0) / 200)
+                while i < i1 { let v = mePcm[i]; if v < lo { lo = v }; if v > hi { hi = v }; i += step }
+                let y1 = mid - CGFloat(hi) * (meH / 2 - 3), y2 = mid - CGFloat(lo) * (meH / 2 - 3)
+                ctx.fill(CGRect(x: CGFloat(px), y: y1, width: 1, height: max(1, y2 - y1)))
+            }
+            let lab = NSAttributedString(string: "我的", attributes: [
+                .font: UIFont.systemFont(ofSize: 9), .foregroundColor: C.rulerInk])
+            lab.draw(at: CGPoint(x: 4, y: meTop + 3))
         }
 
         // 难点
@@ -321,6 +354,7 @@ extension UIColor {
 /// 包给 SwiftUI 用
 struct WaveView: UIViewRepresentable {
     @ObservedObject var vm: DrillModel
+    @ObservedObject var rec = Recorder.shared
     /// 必须自己盯住播放器：只有它的 position 变化触发重绘，波形上的红色播放头才会跟着走。
     /// 上一版把界面上显示时间的那行去掉后，没人再"读"这个值，SwiftUI 就不重绘了，
     /// 于是红条不动 —— 这种依赖是隐式的，最容易踩。
@@ -345,6 +379,8 @@ struct WaveView: UIViewRepresentable {
         v.words = vm.words
         v.marks = vm.marks
         v.snapEnabled = vm.snap
+        v.mePcm = Recorder.shared.takePCM
+        v.meStart = vm.selection?.lowerBound ?? 0
         v.setNeedsDisplay()
     }
 }

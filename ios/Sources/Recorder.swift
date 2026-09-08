@@ -20,6 +20,8 @@ final class Recorder: NSObject, ObservableObject {
     @Published private(set) var message: String?
     /// 语调曲线：原声和你的，按 DTW 对齐到同一条时间轴上（单位是半音，相对各自的中位数）
     @Published private(set) var curve: (nat: [Double], mine: [Double?], rms: [Double])?
+    /// 刚录的那一条（16k 单声道），画在波形下面跟原声对齐着看
+    @Published private(set) var takePCM: [Float] = []
 
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
@@ -32,6 +34,7 @@ final class Recorder: NSObject, ObservableObject {
         hasTake = false; heard = nil; wrongWords = []; score = nil; message = nil
         heardAttributed = AttributedString("")
         curve = nil
+        takePCM = []
     }
 
     // MARK: - 录
@@ -89,6 +92,7 @@ final class Recorder: NSObject, ObservableObject {
 
     private func analyse(sentence: Api.Sentence?, autoAB: Bool, range: ClosedRange<Double>?) async {
         guard let mine = try? loadPCM16k(fileURL) else { message = "读不到刚才的录音"; return }
+        takePCM = mine
         guard mine.count > 16000 / 8 else { message = "没录到声音，再来一次"; return }
         let nat = Player.shared.pcm16k(range: range)
         guard nat.count > 1000 else { message = "原声还没载入"; return }
