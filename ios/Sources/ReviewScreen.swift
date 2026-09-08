@@ -45,13 +45,19 @@ struct ReviewScreen: View {
                         .frame(maxWidth: .infinity)
                         .card()
 
-                        Button { replay() } label: {
-                            Label(player.isPlaying ? "正在播…" : "再听一遍",
-                                  systemImage: "play.circle.fill")
-                                .font(.system(size: 17, weight: .medium))
-                                .frame(maxWidth: .infinity, minHeight: 52)
+                        HStack(spacing: 10) {
+                            Button { player.isPlaying ? player.pause() : replay() } label: {
+                                Label(player.isPlaying ? "暂停" : "再听一遍",
+                                      systemImage: player.isPlaying ? "pause.fill" : "play.circle.fill")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .frame(maxWidth: .infinity, minHeight: 52)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button { player.loop.toggle(); if player.loop { replay() } } label: {
+                                Image(systemName: "repeat").frame(width: 54, height: 52)
+                            }
+                            .prominent(player.loop)
                         }
-                        .buttonStyle(.borderedProminent)
 
                         if shown {
                             HStack(spacing: 8) {
@@ -94,6 +100,7 @@ struct ReviewScreen: View {
                 }
             }
             .task { await load() }
+            .onDisappear { player.pause() }
         }
     }
 
@@ -119,6 +126,12 @@ struct ReviewScreen: View {
     }
 
     private func load() async {
+        // 复习这一屏自己说了算：把精听台留下的循环、选区、"播完干什么"全清掉，
+        // 不然会一直自动播、还停不下来（踩过）
+        player.loop = false
+        player.loopTimes = 0
+        player.onSegmentEnd = nil
+        player.setSegment(nil, playNow: false)
         loading = true
         queue = (try? await Api.due(40)) ?? []
         i = 0; shown = false; toast = nil

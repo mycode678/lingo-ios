@@ -13,10 +13,8 @@ struct DrillScreen: View {
     @EnvironmentObject var player: Player
     @StateObject private var vm = DrillModel()
     @StateObject private var rec = Recorder.shared
-    @Environment(\.colorScheme) private var systemScheme
 
     // 外观
-    @AppStorage("ui.scheme") private var scheme = "system"
     @AppStorage("ui.sentFont") private var sentFont = 21.0
     @AppStorage("ui.sentFace") private var sentFace = "system"
     @AppStorage("ui.sentColor") private var sentColor = ""          // 空＝跟随主题
@@ -113,8 +111,6 @@ struct DrillScreen: View {
             if vm.loading { ProgressView().controlSize(.mini) }
             Spacer(minLength: 4)
             iconButton(volKeys ? "volume.2.fill" : "volume.slash", on: volKeys) { volKeys.toggle() }
-            iconButton(scheme == "system" ? "circle.lefthalf.filled"
-                       : (scheme == "light" ? "sun.max" : "moon")) { cycleScheme() }
             iconButton("textformat") { showStyle = true }
             iconButton("headphones") { showWalk = true }
             iconButton("slider.horizontal.3") { showMore = true }
@@ -188,9 +184,9 @@ struct DrillScreen: View {
 
     private func sentenceCard(_ s: Api.Sentence) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(s.en)
+            // 播到哪个词，哪个词亮 —— 跟电脑版一样的浅黄底
+            Text(highlighted(s.en))
                 .font(face(sentFace, sentFont))
-                .foregroundStyle(color(sentColor) ?? Color.primary)
                 .blur(radius: showText ? 0 : 9)
                 .animation(.easeInOut(duration: 0.16), value: showText)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -435,12 +431,12 @@ struct DrillScreen: View {
                 }
                 Section("原文") {
                     Picker("字体", selection: $sentFace) { faceOptions }
-                    sizeRow("字号", $sentFont, 15...34)
+                    sizeRow("字号", $sentFont, 14...48)
                     colorRow("颜色", $sentColor)
                 }
                 Section("译文") {
                     Picker("字体", selection: $cnFace) { faceOptions }
-                    sizeRow("字号", $cnFont, 11...28)
+                    sizeRow("字号", $cnFont, 11...40)
                     colorRow("颜色", $cnColor)
                 }
                 Section("卡片底色") { colorRow("底色", $cardBg) }
@@ -485,6 +481,36 @@ struct DrillScreen: View {
 
     // MARK: - 小工具
 
+    /// 把句子拆成词，播到哪个词就给哪个词加浅黄底。
+    /// 词的时间来自服务器的强制对齐；它是按"去掉标点后按空格切"生成的，
+    /// 所以这里按同样的规则对位：只有含字母数字的那些词才占一个位置。
+    private func highlighted(_ text: String) -> AttributedString {
+        let base = color(sentColor) ?? Color.primary
+        guard !vm.words.isEmpty, player.isPlaying || player.position > 0 else {
+            var a = AttributedString(text); a.foregroundColor = base; return a
+        }
+        let t = player.position
+        var active = -1
+        for (i, w) in vm.words.enumerated() where t >= w.s && t < w.e { active = i; break }
+        if active < 0, let last = vm.words.last, t >= last.e { active = -1 }
+
+        var out = AttributedString("")
+        var k = 0
+        for (n, tok) in text.split(separator: " ", omittingEmptySubsequences: false).enumerated() {
+            var piece = AttributedString((n > 0 ? " " : "") + tok)
+            piece.foregroundColor = base
+            let hasLetter = tok.contains { $0.isLetter || $0.isNumber }
+            if hasLetter {
+                if k == active {
+                    piece.backgroundColor = Color.yellow.opacity(0.45)
+                }
+                k += 1
+            }
+            out += piece
+        }
+        return out
+    }
+
     private func face(_ name: String, _ size: Double) -> Font {
         switch name {
         case "rounded": return .system(size: size, design: .rounded)
@@ -494,9 +520,6 @@ struct DrillScreen: View {
         }
     }
     private func color(_ hex: String) -> Color? { hex.isEmpty ? nil : Color(hex: hex) }
-    private func cycleScheme() {
-        scheme = scheme == "system" ? "light" : (scheme == "light" ? "dark" : "system")
-    }
     private var isFav: Bool { (store.prog[store.current?.src ?? ""]?.fav ?? 0) == 1 }
     private func toggleFav() async {
         guard let s = store.current else { return }
