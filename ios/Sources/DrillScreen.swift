@@ -165,6 +165,7 @@ struct DrillScreen: View {
         .onAppear {
             // 复习页和精听页共用一个播放器：在复习里放过 A 句，回到精听页时
             // 播放器里装的还是 A，点播放就放错人。切回来先对一下是不是当前这句。
+            wireNowPlaying(s)          // 锁屏/耳机的播放键交给这一屏
             guard player.loadedSrc != s.src else { return }
             Task {
                 player.pause()
@@ -185,6 +186,7 @@ struct DrillScreen: View {
             showText = true
             flash = nil
             wireVolumeKeys()
+            wireNowPlaying(s)
             // 截图用：-sheet list|gap|rate 启动就把对应面板打开（抽屉里的布局也要验）
             if Demo.on, let sh = Demo.sheet {
                 switch sh {
@@ -946,6 +948,21 @@ struct DrillScreen: View {
             guard autoNext, store.current?.src == src else { return }
             step(1)
         }
+    }
+
+    /// 把锁屏、控制中心、耳机线控上的播放键接到这一屏。
+    /// 这些按钮是全局的，谁最后接管就归谁 —— 随身模式退出后要由精听台重新接回来，
+    /// 否则锁屏上按播放还在动随身模式那套（或者干脆没反应）。
+    private func wireNowPlaying(_ s: Api.Sentence) {
+        let np = NowPlaying.shared
+        np.title = s.en
+        np.subtitle = store.word + (s.gnum.map { " · " + $0 } ?? "")
+        np.blind = false
+        np.onToggle = { player.toggle() }
+        np.onNext = { step(1) }
+        np.onPrev = { step(-1) }
+        np.onReplay = { player.play(from: vm.selection?.lowerBound ?? 0) }
+        np.update()
     }
 
     /// 屏幕中间浮一句话，过几秒自己消失
