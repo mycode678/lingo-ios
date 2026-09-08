@@ -45,8 +45,8 @@ struct DrillScreen: View {
     @State private var showStyle = false
     @State private var showList = false
     @State private var flash: String?
-    /// 滑动切句时中间闪一下"4/12" —— 单独一个状态，不能用 flash：
-    /// 换句子时 .task 会把 flash 清掉，提示还没看见就没了。
+    /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
+    /// 不能用 flash：换句子时 .task 会把 flash 清掉，提示还没看见就没了。
     @State private var stepHint: String?
 
     var body: some View {
@@ -105,7 +105,8 @@ struct DrillScreen: View {
                     .overlay {
                         if let h = stepHint {
                             Text(h)
-                                .font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                                .multilineTextAlignment(.center)
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 14).padding(.vertical, 8)
                                 .background(Color.black.opacity(0.55))
@@ -192,18 +193,28 @@ struct DrillScreen: View {
 
             Spacer(minLength: 0)
 
+            // 音量键切句：单独一个开关摆在这儿，别藏菜单里 ——
+            // 走路时屏幕黑着，全靠它；开没开必须一眼看得见。
+            Button {
+                volKeys.toggle()
+                showHint(volKeys ? "已经可以用音量键切上下句了　＋上一句　−下一句"
+                                 : "音量键还给系统，恢复调音量", 2.2)
+            } label: {
+                Image(systemName: volKeys ? "speaker.wave.2.fill" : "speaker.wave.2")
+            }
+            .buttonStyle(IconButton(on: volKeys))
+
             Button { showWalk = true } label: { Image(systemName: "headphones") }
                 .buttonStyle(IconButton())
             Menu {
-                Toggle("音量键切上下句", isOn: $volKeys)
                 Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
                 Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
                 Toggle("显示英文释义", isOn: $showDef)
                 Toggle("听辅音（更清楚）", isOn: $boostHF)
             } label: {
-                Image(systemName: volKeys ? "ellipsis.circle.fill" : "ellipsis.circle")
+                Image(systemName: "ellipsis.circle")
                     .font(.system(size: 15))
-                    .foregroundStyle(volKeys ? Color.accentColor : Color.primary.opacity(0.55))
+                    .foregroundStyle(Color.primary.opacity(0.55))
                     .frame(width: 40, height: 34)
             }
         }
@@ -763,11 +774,7 @@ struct DrillScreen: View {
         rec.reset()
         // 滑动切句没有按钮按下去那种手感，得给点回应：震一下 + 中间闪一下第几句
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        let h = "\(i + 1) / \(n)"
-        withAnimation(.easeOut(duration: 0.12)) { stepHint = h }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            withAnimation(.easeIn(duration: 0.25)) { if stepHint == h { stepHint = nil } }
-        }
+        showHint("\(i + 1) / \(n)")
     }
     /// 一段播完 → 等"换下一句之前"这个间隔 → 再跳。
     /// 中途要是切了句或停了播，这次回调作废（拿当时那句的地址对一下就知道）。
@@ -776,6 +783,14 @@ struct DrillScreen: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, gapOut)) {
             guard autoNext, store.current?.src == src else { return }
             step(1)
+        }
+    }
+
+    /// 屏幕中间浮一句话，过几秒自己消失
+    private func showHint(_ t: String, _ sec: Double = 0.7) {
+        withAnimation(.easeOut(duration: 0.12)) { stepHint = t }
+        DispatchQueue.main.asyncAfter(deadline: .now() + sec) {
+            withAnimation(.easeIn(duration: 0.25)) { if stepHint == t { stepHint = nil } }
         }
     }
 
