@@ -197,8 +197,8 @@ struct DrillScreen: View {
             // 走路时屏幕黑着，全靠它；开没开必须一眼看得见。
             Button {
                 volKeys.toggle()
-                showHint(volKeys ? "已经可以用音量键切上下句了　＋上一句　−下一句"
-                                 : "音量键还给系统，恢复调音量", 2.2)
+                showHint(volKeys ? "现在按音量键就能切句了\n音量＋上一句　音量−下一句"
+                                 : "关了，音量键现在只调音量", 2.2)
             } label: {
                 Image(systemName: volKeys ? "speaker.wave.2.fill" : "speaker.wave.2")
             }
