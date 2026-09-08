@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit                 // 切句的那下轻震动（UIImpactFeedbackGenerator）
 
 /// 精听台（手机思维：拇指够得到的地方放常用的，一次性设置全收进抽屉）
 ///
@@ -44,6 +43,8 @@ struct DrillScreen: View {
     @State private var showMore = false
     @State private var showStyle = false
     @State private var showList = false
+    @State private var showGap = false          // 播放间隔的小面板
+    @State private var editRate: Int?           // 正在改第几档速度
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
     /// 不能用 flash：换句子时 .task 会把 flash 清掉，提示还没看见就没了。
@@ -58,6 +59,9 @@ struct DrillScreen: View {
             .sheet(isPresented: $showWalk) { WalkScreen(startSegment: vm.selection) }
             .sheet(isPresented: $showMore) { settingsSheet }
             .sheet(isPresented: $showStyle) { styleSheet }
+            .sheet(isPresented: $showGap) { gapSheet }
+            .sheet(isPresented: Binding(get: { editRate != nil },
+                                        set: { if !$0 { editRate = nil } })) { rateSheet }
             .sheet(isPresented: $showList) {
                 SentenceListSheet(onPick: { i in
                     player.pause(); store.index = i; rec.reset(); showText = true; flash = nil
@@ -105,12 +109,14 @@ struct DrillScreen: View {
                     .overlay {
                         if let h = stepHint {
                             Text(h)
-                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                                .font(.system(size: 18, weight: .semibold))
                                 .multilineTextAlignment(.center)
+                                .lineSpacing(4)
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 14).padding(.vertical, 8)
-                                .background(Color.black.opacity(0.55))
-                                .clipShape(Capsule())
+                                .padding(.horizontal, 20).padding(.vertical, 14)
+                                .background(Color.black.opacity(0.72))
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .padding(.horizontal, 24)
                                 .transition(.opacity)
                                 .allowsHitTesting(false)
                         }
@@ -198,7 +204,7 @@ struct DrillScreen: View {
             Button {
                 volKeys.toggle()
                 showHint(volKeys ? "已经可以用音量键切上下句了\n＋上一句　−下一句"
-                                 : "关了，音量键现在只调音量", 2.2)
+                                 : "关了，音量键现在只调音量", 3.5)
             } label: {
                 Image(systemName: volKeys ? "speaker.wave.2.fill" : "speaker.wave.2")
             }
@@ -490,18 +496,7 @@ struct DrillScreen: View {
                 // 循环间隔：跟播放键放同一排，点一下就能改。
                 // 这是练的时候一直在动的东西（跟不上就拉长、顺了就缩短），
                 // 埋在设置抽屉里等于没有。牌子上显示的是"同一段两遍之间"那个值。
-                Menu {
-                    Picker("同一段两遍之间", selection: $gapIn) {
-                        ForEach([0.0, 0.3, 0.5, 0.8, 1.2, 2.0, 3.0, 4.0], id: \.self) {
-                            Text($0 == 0 ? "不停顿" : "\($0, specifier: "%.1f") 秒").tag($0)
-                        }
-                    }
-                    Picker("换下一句之前", selection: $gapOut) {
-                        ForEach([0.0, 0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) {
-                            Text($0 == 0 ? "不停顿" : "\($0, specifier: "%.1f") 秒").tag($0)
-                        }
-                    }
-                } label: {
+                Button { showGap = true } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "timer").font(.system(size: 12))
                         Text(gapIn == 0 ? "不停" : "\(gapIn, specifier: "%.1f")s")
@@ -512,6 +507,7 @@ struct DrillScreen: View {
                     .background(Color.primary.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
                 }
+                .buttonStyle(.plain)
             }
             HStack(spacing: T.gap) {
                 // 选句子：以前在顶栏，够不着 —— 挪到这儿，跟倍速同一行，不多占高度
@@ -529,14 +525,26 @@ struct DrillScreen: View {
                 }
                 .buttonStyle(.plain)
 
-                Picker("", selection: Binding(
-                    get: { nearestRate },
-                    set: { player.rate = Float($0); if player.isPlaying { player.play() } })) {
-                    ForEach(rates, id: \.self) { r in
-                        Text(rateLabel(r)).tag(r)
+                // 点＝换速度，长按＝改这一档的值（0.1 一步，也能直接打数字）。
+                // 不用 segmented Picker 是因为它没法长按；档位数固定四个，够用。
+                HStack(spacing: 5) {
+                    ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
+                        let on = abs(r - nearestRate) < 0.001
+                        Text(rateLabel(r))
+                            .font(.system(size: 13, weight: on ? .semibold : .regular))
+                            .monospacedDigit()
+                            .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.75))
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                            .background(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                player.rate = Float(r)
+                                if player.isPlaying { player.play() }
+                            }
+                            .onLongPressGesture(minimumDuration: 0.4) { editRate = i }
                     }
                 }
-                .pickerStyle(.segmented)
             }
             .padding(.horizontal, T.side)
         }
@@ -547,6 +555,82 @@ struct DrillScreen: View {
         .onChange(of: loopTimes) { _, v in player.loopTimes = v }
         .onChange(of: snap) { _, v in vm.snap = v }
     }
+    // MARK: - 两个小面板：播放间隔、改某一档速度
+
+    /// 一行"减 — 数字 — 加"：0.1 一步，中间那个数字点开能直接打字
+    private func numberRow(_ title: String, _ v: Binding<Double>,
+                           _ range: ClosedRange<Double>, _ suffix: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 15))
+            Spacer()
+            Button {
+                v.wrappedValue = max(range.lowerBound, ((v.wrappedValue - 0.1) * 10).rounded() / 10)
+            } label: { Image(systemName: "minus").frame(width: 40, height: 34) }
+                .buttonStyle(.plain)
+            TextField("", value: v, format: .number.precision(.fractionLength(0...2)))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 17, weight: .medium)).monospacedDigit()
+                .frame(width: 66, height: 34)
+                .background(Color.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onChange(of: v.wrappedValue) { _, nv in
+                    if nv < range.lowerBound { v.wrappedValue = range.lowerBound }
+                    if nv > range.upperBound { v.wrappedValue = range.upperBound }
+                }
+            Button {
+                v.wrappedValue = min(range.upperBound, ((v.wrappedValue + 0.1) * 10).rounded() / 10)
+            } label: { Image(systemName: "plus").frame(width: 40, height: 34) }
+                .buttonStyle(.plain)
+            Text(suffix).font(.system(size: 13)).foregroundStyle(.secondary)
+        }
+    }
+
+    private var gapSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒")
+                    numberRow("换下一句之前", $gapOut, 0...6, "秒")
+                } footer: {
+                    Text("跟不上就调长，顺了就调短。0 就是不停顿，一遍接一遍。")
+                }
+            }
+            .navigationTitle("播放间隔")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
+                Button("完成") { showGap = false } } }
+        }
+        .presentationDetents([.height(260)])
+    }
+
+    private var rateSheet: some View {
+        let i = editRate ?? 0
+        return NavigationStack {
+            Form {
+                Section {
+                    numberRow("速度", Binding(
+                        get: { rates.indices.contains(i) ? rates[i] : 1.0 },
+                        set: { setRate(i, $0) }), 0.4...2.0, "倍")
+                } footer: {
+                    Text("底部那一排任意一档长按就能改。慢到 0.4 快到 2.0，"
+                         + "中间的数字点开可以直接打。")
+                }
+                Section {
+                    Button("四档恢复默认（1x / 0.75x / 0.6x / 0.5x）") {
+                        ratesCSV = "1.0,0.75,0.6,0.5"
+                        editRate = nil
+                    }
+                }
+            }
+            .navigationTitle("第 \(i + 1) 档速度")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
+                Button("完成") { editRate = nil } } }
+        }
+        .presentationDetents([.height(300)])
+    }
+
     // MARK: - 两张抽屉
 
     private var settingsSheet: some View {
@@ -555,49 +639,18 @@ struct DrillScreen: View {
                 Section("播放") {
                     Toggle("切到一句就自动播放", isOn: $autoPlay)
                     Toggle("一段播完自动下一句", isOn: $autoNext)
-                    Picker("同一段两遍之间", selection: $gapIn) {
-                        ForEach([0.3, 0.5, 0.8, 1.2, 2.0, 3.0], id: \.self) {
-                            Text("\($0, specifier: "%.1f") 秒").tag($0) }
-                    }
-                    Picker("换下一句之前", selection: $gapOut) {
-                        ForEach([0.0, 0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) {
-                            Text("\($0, specifier: "%.1f") 秒").tag($0) }
-                    }
+                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒")
+                    numberRow("换下一句之前", $gapOut, 0...6, "秒")
                     Picker("循环遍数", selection: $loopTimes) {
                         Text("一直循环").tag(0)
                         ForEach([2, 3, 5, 10], id: \.self) { Text("\($0) 遍").tag($0) }
                     }
                 }
                 Section {
-                    ForEach(Array(rates.enumerated()), id: \.offset) { i, v in
-                        Stepper(value: Binding(get: { v }, set: { setRate(i, $0) }),
-                                in: 0.4...2.0, step: 0.05) {
-                            HStack {
-                                Text("第 \(i + 1) 档")
-                                Spacer()
-                                Text(rateLabel(v)).foregroundStyle(.secondary).monospacedDigit()
-                            }
-                        }
-                    }
-                    Stepper(value: Binding(
-                        get: { rates.count },
-                        set: { n in
-                            var a = rates
-                            while a.count > max(2, n) { a.removeLast() }
-                            while a.count < min(5, n) { a.append(max(0.4, (a.last ?? 1.0) - 0.1)) }
-                            ratesCSV = a.map { String(format: "%.2f", $0) }.joined(separator: ",")
-                        }), in: 2...5) {
-                        HStack { Text("一共几档"); Spacer()
-                            Text("\(rates.count) 档").foregroundStyle(.secondary) }
-                    }
-                    Button("恢复默认（1x / 0.75x / 0.6x / 0.5x）") {
-                        ratesCSV = "1.0,0.75,0.6,0.5"
-                    }
-                } header: {
-                    Text("倍速档位")
-                } footer: {
-                    Text("底部那一排就是这几档，从左到右。慢到 0.4 快到 2.0 都行 —— "
-                         + "听熟了就往快里调，新句子先调慢。")
+                    Text("倍速：底部那一排长按任意一档就能改")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("间隔：底部 ⏱ 那个牌子点一下就能改")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 Section {
                     Toggle("音量键切上下句", isOn: $volKeys)
@@ -772,9 +825,7 @@ struct DrillScreen: View {
         store.index = i
         showText = true
         rec.reset()
-        // 滑动切句没有按钮按下去那种手感，得给点回应：震一下 + 中间闪一下第几句
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        showHint("\(i + 1) / \(n)")
+        // 切句不给任何反馈（不震动、不弹字）：手势大家早就用熟了，反馈反而打扰
     }
     /// 一段播完 → 等"换下一句之前"这个间隔 → 再跳。
     /// 中途要是切了句或停了播，这次回调作废（拿当时那句的地址对一下就知道）。
@@ -787,7 +838,7 @@ struct DrillScreen: View {
     }
 
     /// 屏幕中间浮一句话，过几秒自己消失
-    private func showHint(_ t: String, _ sec: Double = 0.7) {
+    private func showHint(_ t: String, _ sec: Double = 2.0) {
         withAnimation(.easeOut(duration: 0.12)) { stepHint = t }
         DispatchQueue.main.asyncAfter(deadline: .now() + sec) {
             withAnimation(.easeIn(duration: 0.25)) { if stepHint == t { stepHint = nil } }

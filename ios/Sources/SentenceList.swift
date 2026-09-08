@@ -30,36 +30,13 @@ struct SentenceListSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                // 筛选钉在顶上，不跟着列表滚 ——
+                // 一百多条例句滚到中间想点"收藏"，还得先滑回顶部，太折腾。
+                filterBar
+                Divider()
+                ScrollViewReader { proxy in
                 List {
-                    Section {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach([("all", "全部"), ("fav", "★ 收藏"), ("new", "没练过"),
-                                         ("mark", "有难点"), ("due", "该复习")], id: \.0) { k, n in
-                                    Button { filter = k } label: {
-                                        Text(n).font(.system(size: 12.5))
-                                            .padding(.horizontal, 11).padding(.vertical, 6)
-                                            .background(filter == k ? Color.accentColor
-                                                                    : Color(.secondarySystemBackground))
-                                            .foregroundStyle(filter == k ? Color.white : Color.primary)
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        if let playAll {
-                            Button {
-                                isPlayingAll ? stopAll?() : playAll()
-                            } label: {
-                                Label(isPlayingAll ? "停止连播" : "整条连播",
-                                      systemImage: isPlayingAll ? "stop.fill" : "play.fill")
-                                    .font(.system(size: 13.5))
-                            }
-                        }
-                    }
-
                     ForEach(rows, id: \.1.src) { idx, s in
                         Section {
                             Button {
@@ -98,12 +75,48 @@ struct SentenceListSheet: View {
                         withAnimation { proxy.scrollTo(store.index, anchor: .center) }
                     }
                 }
+                }
             }
             .navigationTitle("\(store.word) · \(rows.count)/\(store.items.count) 句")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("收起") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// 顶上钉住的一条：筛选 + （查词页才有的）整条连播
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach([("all", "全部"), ("fav", "★ 收藏"), ("new", "没练过"),
+                             ("mark", "有难点"), ("due", "该复习")], id: \.0) { k, n in
+                        Button { filter = k } label: {
+                            Text(n).font(.system(size: 12.5))
+                                .padding(.horizontal, 11).padding(.vertical, 6)
+                                .background(filter == k ? Color.accentColor
+                                                        : Color(.secondarySystemBackground))
+                                .foregroundStyle(filter == k ? Color.white : Color.primary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            if let playAll {
+                Button { isPlayingAll ? stopAll?() : playAll() } label: {
+                    Image(systemName: isPlayingAll ? "stop.fill" : "play.fill")
+                        .font(.system(size: 13))
+                        .frame(width: 34, height: 30)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .background(.bar)
     }
 
     private func dot(_ s: Api.Sentence) -> some View {
