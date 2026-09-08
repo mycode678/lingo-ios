@@ -270,28 +270,15 @@ struct DrillScreen: View {
             edgeGroup("B", minus: { vm.nudge("b", -0.08) },
                       set: { vm.setEdgeAtHead("b") }, plus: { vm.nudge("b", 0.08) })
             Spacer(minLength: 0)
-            // 清掉选区回到整句。以前只是清了选区不播 ——
-            // 循环模式下正播着小句，点它看着像"没反应"（其实还在循环那个小句）。
-            // 现在跟点小句一样：清完直接从头播整句。
-            Button {
-                vm.setSelection(a: nil, b: nil, play: false)
-                vm.zoomAll()
-                player.claim(loop: player.loop, times: loopTimes, segment: nil,
-                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
-                player.play(from: 0)
-            } label: {
-                Label("整句", systemImage: "rectangle.dashed")
+            // 收藏和难点跟"这一句/这段选区"绑在一起，放选区这排比放播放排顺；
+            // 底下那排腾出来给整句、铺满这些一直要点的。
+            Button { Task { await toggleFav() } } label: {
+                Image(systemName: isFav ? "star.fill" : "star")
             }
-            .buttonStyle(LabelButton(on: vm.selection == nil))
-            Button { vm.zoomToSelection() } label: {
-                Label("铺满", systemImage: "arrow.left.and.right")
-            }
-            .buttonStyle(LabelButton())
-            .disabled(vm.selection == nil)
-            .opacity(vm.selection == nil ? 0.35 : 1)
-            // 跳到下一个难点：本来在底排，底排腾给切句和播放了。
-            // 它本来就是选区类操作，放这儿更顺；没标难点时不出现，省一个位置。
-            if !vm.marks.isEmpty {
+            .buttonStyle(IconButton(on: isFav))
+            Button { Task { await vm.toggleMark() } } label: { Image(systemName: "flag") }
+                .buttonStyle(IconButton(on: !vm.marks.isEmpty))
+            if !vm.marks.isEmpty {                      // 没标难点就不占位置
                 Button { vm.nextMark() } label: { Image(systemName: "arrow.right.to.line") }
                     .buttonStyle(IconButton())
             }
@@ -497,6 +484,26 @@ struct DrillScreen: View {
                 }
                 .buttonStyle(.plain)
 
+                // 回到整句：清掉选区并从头播。以前只清不播，
+                // 循环模式下正循环着小句，点它看着像"没反应"。
+                Button {
+                    vm.setSelection(a: nil, b: nil, play: false)
+                    vm.zoomAll()
+                    player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                                 onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                    player.play(from: 0)
+                } label: {
+                    Label("整句", systemImage: "rectangle.dashed")
+                }
+                .buttonStyle(LabelButton(on: vm.selection == nil))
+
+                Button { vm.zoomToSelection() } label: {
+                    Label("铺满", systemImage: "arrow.left.and.right")
+                }
+                .buttonStyle(LabelButton())
+                .disabled(vm.selection == nil)
+                .opacity(vm.selection == nil ? 0.35 : 1)
+
                 Button { player.loop.toggle(); player.loop ? player.play() : player.pause() } label: {
                     Image(systemName: "repeat")
                 }
@@ -510,14 +517,6 @@ struct DrillScreen: View {
                         .foregroundStyle(rec.isRecording ? Color.red : Color.primary.opacity(0.55))
                 }
                 .buttonStyle(IconButton())
-
-                Button { Task { await toggleFav() } } label: {
-                    Image(systemName: isFav ? "star.fill" : "star")
-                }
-                .buttonStyle(IconButton(on: isFav))
-
-                Button { Task { await vm.toggleMark() } } label: { Image(systemName: "flag") }
-                    .buttonStyle(IconButton(on: !vm.marks.isEmpty))
 
                 // 循环间隔：跟播放键放同一排，点一下就能改。
                 // 这是练的时候一直在动的东西（跟不上就拉长、顺了就缩短），
