@@ -18,8 +18,10 @@ final class DrillUITests: XCTestCase {
 
     /// 失败时把当前屏幕上能点的东西列出来，省得瞎猜
     private func dump(_ app: XCUIApplication) -> String {
-        let names = app.buttons.allElementsBoundByIndex.prefix(30).map { $0.label }
-        return "屏幕上的按钮：" + names.joined(separator: " | ")
+        let names = app.buttons.allElementsBoundByIndex.prefix(40).map { $0.label }
+        let ids = app.descendants(matching: .any).allElementsBoundByIndex.prefix(60)
+            .compactMap { $0.identifier.isEmpty ? nil : $0.identifier }
+        return "按钮：" + names.joined(separator: " | ") + "；标识：" + Set(ids).joined(separator: " | ")
     }
 
     private func launch(_ extra: [String] = []) -> XCUIApplication {
@@ -41,7 +43,7 @@ final class DrillUITests: XCTestCase {
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "找不到控制条")
 
         XCTAssertTrue(app.buttons["录音"].exists, "控制条上没有录音")
-        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["自定"]),
+        XCTAssertTrue(scrollToEnd(strip, target: app.descendants(matching: .any)["rate-自定"]),
                       "控制条滑到底也点不到最后一个（自定）；" + dump(app))
     }
 
@@ -51,7 +53,7 @@ final class DrillUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let strip = app.scrollViews.matching(identifier: "controlStrip").firstMatch
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "横屏找不到控制条")
-        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["自定"]),
+        XCTAssertTrue(scrollToEnd(strip, target: app.descendants(matching: .any)["rate-自定"]),
                       "横屏控制条滑到底也点不到最后一个（自定）；" + dump(app))
     }
 

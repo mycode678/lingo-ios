@@ -237,6 +237,9 @@ struct DrillScreen: View {
                     .contentShape(Rectangle())
                     .onTapGesture { autoNext.toggle() }
                     .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30) { showGap = true }
+                    .accessibilityElement()
+                    .accessibilityLabel("连播")
+                    .accessibilityAddTraits(.isButton)
 
                 gapChip
                 showMenu
@@ -658,6 +661,12 @@ struct DrillScreen: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: tap)
             .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30, perform: hold)
+            // 用 Text＋手势拼出来的东西，系统默认不当它是按钮：VoiceOver 读不出来，
+            // UI 测试也点不到。手动声明成按钮。
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityIdentifier("rate-" + label)
+            .accessibilityAddTraits(.isButton)
     }
 
     private func setRate(_ i: Int, _ v: Double) {

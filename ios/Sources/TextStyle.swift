@@ -164,5 +164,8 @@ struct LoopButton: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
         .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30, perform: onHold)
+        .accessibilityElement()
+        .accessibilityLabel(player.loop ? "循环开" : "循环")
+        .accessibilityAddTraits(.isButton)
     }
 }
