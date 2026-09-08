@@ -93,12 +93,15 @@ final class DrillModel: ObservableObject {
         do {
             try await Player.shared.load(src: s.src)
             view = (0, Player.shared.duration)
-            async let w = Api.align(s.src)
-            async let m = Api.marks(s.src)
-            words = (try? await w) ?? []
-            marks = (try? await m) ?? []
-            chunks = Self.cutChunks(words)
-            if words.isEmpty { note = "这句还没切词，词条行和吸附暂时没有（不影响听和练）" }
+            marks = (try? await Api.marks(s.src)) ?? []
+            do {
+                words = try await Api.align(s.src)
+                chunks = Self.cutChunks(words)
+                if words.isEmpty { note = "服务器还没切好这句的词" }
+            } catch {
+                // 出了问题要说清是哪一步，不然只能靠猜（第一版就吃了这个亏）
+                note = "取词边界失败：\(error.localizedDescription)"
+            }
         } catch {
             note = "音频载入失败：\(error.localizedDescription)"
         }

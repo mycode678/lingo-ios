@@ -7,6 +7,7 @@ struct DrillScreen: View {
     @EnvironmentObject var store: Store
     @EnvironmentObject var player: Player
     @StateObject private var vm = DrillModel()
+    @AppStorage("ui.sentFont") private var sentFont = 21.0
     @State private var showText = true
     @State private var showWalk = false
     @State private var graded: String?
@@ -70,12 +71,12 @@ struct DrillScreen: View {
                 Text(g).font(.caption).foregroundStyle(.secondary)
             }
             Text(s.en)
-                .font(.system(size: 21, weight: .regular))
+                .font(.system(size: sentFont, weight: .regular))
                 .blur(radius: showText ? 0 : 9)
                 .animation(.easeInOut(duration: 0.18), value: showText)
                 .onTapGesture { showText.toggle() }
             if let cn = s.cn, !cn.isEmpty, showText {
-                Text(cn).font(.system(size: 15)).foregroundStyle(.secondary)
+                Text(cn).font(.system(size: sentFont - 5)).foregroundStyle(.secondary)
             }
             if let d = s.dfe, !d.isEmpty, showText {
                 Divider()

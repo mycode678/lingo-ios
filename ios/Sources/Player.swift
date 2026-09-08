@@ -23,9 +23,12 @@ final class Player: ObservableObject {
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let pitch = AVAudioUnitTimePitch()
-    private var file: AVAudioFile?
     private var buffer: AVAudioPCMBuffer?
-    private var sampleRate: Double = 44100
+    /// 统一的内部格式。词典音频有 22k 单声道也有 44.1k 立体声，
+    /// 而 AVAudioPlayerNode 要求"喂进去的 buffer 格式必须跟连线时的格式一致"，
+    /// 否则直接崩（第一版就是这么崩的）。所以载入时一律转成这个格式，连线只连一次。
+    private let fmt = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+    private var sampleRate: Double { fmt.sampleRate }
     private var startHostTime: Double = 0
     private var startOffset: Double = 0
     private var ticker: Timer?
@@ -36,8 +39,8 @@ final class Player: ObservableObject {
     private init() {
         engine.attach(node)
         engine.attach(pitch)
-        engine.connect(node, to: pitch, format: nil)
-        engine.connect(pitch, to: engine.mainMixerNode, format: nil)
+        engine.connect(node, to: pitch, format: fmt)
+        engine.connect(pitch, to: engine.mainMixerNode, format: fmt)
         pitch.overlap = 8                                  // 慢放时的相位重叠，越大越平滑
         configureSession()
         NotificationCenter.default.addObserver(
@@ -61,19 +64,44 @@ final class Player: ObservableObject {
     func load(src: String) async throws {
         let url = try await Cache.shared.localURL(for: src)
         let f = try AVAudioFile(forReading: url)
-        let fmt = f.processingFormat
-        guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(f.length)) else {
-            throw NSError(domain: "player", code: 1)
+        let src = f.processingFormat
+        guard let inBuf = AVAudioPCMBuffer(pcmFormat: src, frameCapacity: AVAudioFrameCount(f.length)) else {
+            throw NSError(domain: "player", code: 1, userInfo: [NSLocalizedDescriptionKey: "分配缓冲失败"])
         }
-        try f.read(into: buf)
-        file = f; buffer = buf
-        sampleRate = fmt.sampleRate
-        duration = Double(f.length) / sampleRate
+        try f.read(into: inBuf)
+
+        // 统一转成 44.1k 单声道浮点
+        let buf: AVAudioPCMBuffer
+        if src == fmt {
+            buf = inBuf
+        } else {
+            guard let conv = AVAudioConverter(from: src, to: fmt) else {
+                throw NSError(domain: "player", code: 2, userInfo: [NSLocalizedDescriptionKey: "格式转换器建不起来"])
+            }
+            let cap = AVAudioFrameCount(Double(inBuf.frameLength) * fmt.sampleRate / src.sampleRate) + 1024
+            guard let out = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: cap) else {
+                throw NSError(domain: "player", code: 3, userInfo: [NSLocalizedDescriptionKey: "分配输出缓冲失败"])
+            }
+            var done = false
+            var err: NSError?
+            conv.convert(to: out, error: &err) { _, status in
+                if done { status.pointee = .noDataNow; return nil }
+                done = true; status.pointee = .haveData; return inBuf
+            }
+            if let err { throw err }
+            buf = out
+        }
+
+        buffer = buf
+        duration = Double(buf.frameLength) / sampleRate
         position = 0
         segment = nil
         if !engine.isRunning {
             engine.prepare()
-            try? engine.start()
+            do { try engine.start() } catch {
+                throw NSError(domain: "player", code: 4,
+                              userInfo: [NSLocalizedDescriptionKey: "音频引擎起不来：\(error.localizedDescription)"])
+            }
         }
     }
 
@@ -112,10 +140,13 @@ final class Player: ObservableObject {
         let my = gen
         node.stop()
         // 从大 buffer 里切一段出来（拷贝一次，几毫秒的事，换来精确的边界）
-        guard let seg = AVAudioPCMBuffer(pcmFormat: buf.format, frameCapacity: frames) else { return }
+        guard buf.format == fmt,
+              let chIn = buf.floatChannelData,
+              let seg = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: frames),
+              let chOut = seg.floatChannelData,
+              Int(a) + Int(frames) <= Int(buf.frameLength) else { return }
         seg.frameLength = frames
-        let chIn = buf.floatChannelData!, chOut = seg.floatChannelData!
-        for c in 0..<Int(buf.format.channelCount) {
+        for c in 0..<Int(fmt.channelCount) {
             memcpy(chOut[c], chIn[c] + Int(a), Int(frames) * MemoryLayout<Float>.size)
         }
         if !engine.isRunning { try? engine.start() }

@@ -6,6 +6,8 @@ struct LingoApp: App {
     @StateObject private var store = Store.shared
     @StateObject private var player = Player.shared
     @State private var tab = 0
+    @AppStorage("ui.accent") private var accent = "#2f6fd0"
+    @AppStorage("ui.scheme") private var scheme = "system"
 
     init() {
         NowPlaying.shared.wire()
@@ -22,6 +24,8 @@ struct LingoApp: App {
             }
             .environmentObject(store)
             .environmentObject(player)
+            .tint(Color(hex: accent))
+            .preferredColorScheme(scheme == "light" ? .light : (scheme == "dark" ? .dark : nil))
             .task {
                 await store.loadDueCount()
                 await store.loadHist()

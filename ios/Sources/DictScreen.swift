@@ -7,6 +7,8 @@ import WebKit
 struct DictScreen: View {
     @EnvironmentObject var store: Store
     @EnvironmentObject var player: Player
+    @AppStorage("ui.entryFont") private var entryFont = 17.0
+    @AppStorage("ui.listFont") private var listFont = 15.0
     @State private var q = ""
     @State private var suggestions: [String] = []
     @State private var showList = false
@@ -19,7 +21,7 @@ struct DictScreen: View {
                     if store.entryHTML.isEmpty {
                         welcome
                     } else {
-                        EntryWebView(html: store.entryHTML, onWord: { w in
+                        EntryWebView(html: store.entryHTML, fontSize: entryFont, onWord: { w in
                             Task { await store.look(w) }
                         }, onSound: { src in
                             play(src)
@@ -116,11 +118,11 @@ struct DictScreen: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 6) {
                                     dot(for: s)
-                                    Text(s.en).font(.system(size: 15))
+                                    Text(s.en).font(.system(size: listFont))
                                         .foregroundStyle(playingSrc == s.src ? Color.accentColor : .primary)
                                 }
                                 if let cn = s.cn, !cn.isEmpty {
-                                    Text(cn).font(.system(size: 13)).foregroundStyle(.secondary)
+                                    Text(cn).font(.system(size: listFont - 2)).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -162,6 +164,7 @@ struct DictScreen: View {
 /// 词条正文。链接（查别的词）和喇叭（放音）都拦下来交给原生处理。
 struct EntryWebView: UIViewRepresentable {
     var html: String
+    var fontSize: Double = 17
     var onWord: (String) -> Void
     var onSound: (String) -> Void
 
@@ -179,8 +182,9 @@ struct EntryWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ v: WKWebView, context: Context) {
-        guard context.coordinator.lastHTML != html else { return }
+        guard context.coordinator.lastHTML != html || context.coordinator.lastFont != fontSize else { return }
         context.coordinator.lastHTML = html
+        context.coordinator.lastFont = fontSize
         v.loadHTMLString(page(html), baseURL: URL(string: Api.base))
     }
 
@@ -197,7 +201,7 @@ struct EntryWebView: UIViewRepresentable {
         @media (prefers-color-scheme: dark){:root{
           --ink:#dde5ee;--dim:#8b9aab;--ex:#8ab4f8;--num:#7fb0f0;--card:#1c1c1e;--line:#333c46;--hi:#2a323b}}
         body{margin:0;padding:14px 16px 90px;background:transparent;color:var(--ink);
-          font:16.5px/1.85 -apple-system,"PingFang SC",system-ui}
+          font:\(fontSize)px/1.85 -apple-system,"PingFang SC",system-ui}
         .entry{color:var(--ink)!important;font-family:inherit!important;line-height:1.85!important}
         .example{color:var(--ex)!important;display:block;margin:2px 0}
         .expcn,.defcn,.collocn,.gramcn,.explcn{color:var(--dim)!important;margin-left:.8em!important}
@@ -241,9 +245,22 @@ struct EntryWebView: UIViewRepresentable {
     final class Coord: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let parent: EntryWebView
         var lastHTML = ""
+        var lastFont: Double = 0
         init(_ p: EntryWebView) {
             parent = p
             super.init()
+        }
+        /// 服务器是自签证书。URLSession 那边已经放行了，WKWebView 得单独再放一次 ——
+        /// 不放的话样式表和插图会静默加载失败，词条就变成没排版的一坨（踩过）。
+        func webView(_ webView: WKWebView,
+                     didReceive challenge: URLAuthenticationChallenge,
+                     completionHandler: @escaping (URLSession.AuthChallengeDisposition,
+                                                   URLCredential?) -> Void) {
+            guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+                  let t = challenge.protectionSpace.serverTrust,
+                  challenge.protectionSpace.host == URL(string: Api.base)?.host
+            else { completionHandler(.performDefaultHandling, nil); return }
+            completionHandler(.useCredential, URLCredential(trust: t))
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let c = webView.configuration.userContentController
