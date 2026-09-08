@@ -64,20 +64,30 @@ struct DrillScreen: View {
         GeometryReader { geo in
             VStack(spacing: 0) {
                 header
-                ScrollView {
-                    VStack(spacing: 10) {
-                        Spacer(minLength: 0)                    // 上下弹簧把主块顶到屏幕中间
-                        waveBlock
-                        selectionBar
-                        sentenceCard(s)
-                        if !vm.chunks.isEmpty { chunkRow }
-                        if rec.hasTake { takeBlock }
-                        Spacer(minLength: 0)
+                // 位置钉死：波形、原文、小句各占固定高度，换句子时谁都不动。
+                // 内容多了在自己那一块里滚，不许把别人挤上挤下（切句时整屏乱跳就是这么来的）。
+                VStack(spacing: 8) {
+                    Spacer(minLength: 0).frame(height: topPad(geo.size.height))
+                    waveBlock
+                    selectionBar
+                    sentenceCard(s).frame(height: cardHeight)
+                    if !vm.chunks.isEmpty {
+                        ScrollView { chunkRow }
+                            .frame(height: chunkHeight)
+                            .scrollIndicators(.hidden)
                     }
-                    .frame(minHeight: max(200, geo.size.height - 160))
-                    .frame(width: geo.size.width)               // 宽度锁死，谁也别把它撑出去
+                    Spacer(minLength: 0)
                 }
-                .scrollIndicators(.hidden)
+                .frame(width: geo.size.width)
+                // 录完之后的结果单独浮一层，不动上面的布局
+                .overlay(alignment: .bottom) {
+                    if rec.hasTake {
+                        ScrollView { takeBlock.padding(.bottom, 6) }
+                            .frame(maxHeight: geo.size.height * 0.46)
+                            .background(.ultraThinMaterial)
+                            .transition(.move(edge: .bottom))
+                    }
+                }
                 gradeRow
                 transport
             }
@@ -187,6 +197,16 @@ struct DrillScreen: View {
         .buttonStyle(.plain)
     }
 
+    /// 这几个高度只跟字号有关、跟句子长短无关 —— 换句子时布局纹丝不动
+    private var cardHeight: CGFloat {
+        CGFloat(sentFont) * 3.4 + CGFloat(cnFont) * 1.6 + 26 + (showDef ? CGFloat(cnFont) * 1.4 : 0)
+    }
+    private var chunkHeight: CGFloat { 82 }
+    private func topPad(_ h: CGFloat) -> CGFloat {
+        // 主块整体略微下移，落在拇指够得着的位置；比例固定，不随内容变
+        max(0, (h - 190 - 34 - cardHeight - chunkHeight - 150) * 0.35)
+    }
+
     private func sentenceCard(_ s: Api.Sentence) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             // 播到哪个词，哪个词亮 —— 跟电脑版一样的浅黄底
@@ -208,7 +228,7 @@ struct DrillScreen: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(color(cardBg) ?? Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 8)
