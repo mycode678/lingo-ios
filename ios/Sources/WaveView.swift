@@ -319,6 +319,7 @@ final class WaveUIView: UIView {
 
     struct Palette {
         var bg: UIColor; var wave: UIColor; var selBg: UIColor; var selWave: UIColor
+        var bgMe: UIColor; var waveMe: UIColor
         var mark: UIColor; var markLine: UIColor; var rowBg: UIColor
         var chip: [UIColor]; var chipInk: UIColor; var chipSel: UIColor; var chipSelInk: UIColor
         var edge: UIColor; var ruler: UIColor; var rulerTick: UIColor; var rulerInk: UIColor
@@ -327,6 +328,7 @@ final class WaveUIView: UIView {
         static let day = Palette(
             bg: UIColor(hex: 0xf6d093), wave: UIColor(hex: 0x7a5510),
             selBg: UIColor(hex: 0x173a86), selWave: UIColor(hex: 0x9cc4f2),
+            bgMe: UIColor(hex: 0xfbe6c4), waveMe: UIColor(hex: 0xa35c12),
             mark: UIColor(hex: 0xd5433d, a: 0.14), markLine: UIColor(hex: 0xd5433d),
             rowBg: UIColor(hex: 0xefe2cb), chip: [UIColor(hex: 0xe8dcc4), UIColor(hex: 0xdfd0b2)],
             chipInk: UIColor(hex: 0x6b5230), chipSel: UIColor(hex: 0x173a86),
@@ -335,6 +337,7 @@ final class WaveUIView: UIView {
         static let night = Palette(
             bg: UIColor(hex: 0x3a3021), wave: UIColor(hex: 0xe0aa4e),
             selBg: UIColor(hex: 0x1b3f7f), selWave: UIColor(hex: 0xa9cbf5),
+            bgMe: UIColor(hex: 0x33291c), waveMe: UIColor(hex: 0xcf7f2c),
             mark: UIColor(hex: 0xef6a63, a: 0.18), markLine: UIColor(hex: 0xef6a63),
             rowBg: UIColor(hex: 0x2b2519), chip: [UIColor(hex: 0x3b3223), UIColor(hex: 0x453b29)],
             chipInk: UIColor(hex: 0xc3b191), chipSel: UIColor(hex: 0x1b3f7f),
