@@ -53,7 +53,11 @@ targets:
       - target: Lingo
     settings:
       base:
+        # PRODUCT_NAME 一定要写：不写的话 UI 测试的 Runner 会生成一个名字为空的 .app，
+        # 编译直接报 "Multiple commands produce .../.app"（本地 Xcode 16.2 上必现）
+        PRODUCT_NAME: LingoUITests
         PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen.uitests
+        TEST_TARGET_NAME: Lingo
         GENERATE_INFOPLIST_FILE: YES
 
 # XcodeGen 默认生成的 scheme 不带测试动作，xcodebuild test 会说"找不到设备"
