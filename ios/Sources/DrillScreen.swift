@@ -308,11 +308,9 @@ struct DrillScreen: View {
                                 .frame(height: cardHeight)
                                 .padding(.horizontal, T.side)
                         }
-                        if !vm.chunks.isEmpty {
-                            ScrollView { chunkRow }
-                                .frame(height: chunkHeight)
-                                .scrollIndicators(.hidden)
-                        }
+                        // 小句一律排一行横着滑：长句子换行排会变成两行，
+                        // 第二行直接顶到"没听懂"那排上（用户碰上过）。
+                        if !vm.chunks.isEmpty { chunkStrip }
                         Spacer(minLength: 0)
                     }
                     // 什么都不显示时这块只剩选区条那点高度，滑不动 ——
@@ -611,7 +609,6 @@ struct DrillScreen: View {
         ratesCSV = a.map { String(format: "%.2f", $0) }.joined(separator: ",")
     }
 
-    private var chunkHeight: CGFloat { 84 }
     /// 只跟字号有关，跟句子长短无关：短句不塌、长句在卡内滚，切句时纹丝不动
     /// 勾了几样才占多高；一样都没勾就是 0（卡片整个不出现，空间全给波形）
     private var anyText: Bool { showEn || showCn || showDef || showDcn }
@@ -753,7 +750,7 @@ struct DrillScreen: View {
                 if autoNext { step(1) }
             }
         } label: {
-            Text(t).font(.system(size: h < 44 ? 14 : 15, weight: .semibold))
+            Text(t).font(.system(size: h < 44 ? 16 : 17, weight: .semibold))
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: h)
                 .foregroundStyle(c)
@@ -780,12 +777,13 @@ struct DrillScreen: View {
 
     /// 一行"减 — 数字 — 加"：0.1 一步，中间那个数字点开能直接打字
     private func numberRow(_ title: String, _ v: Binding<Double>,
-                           _ range: ClosedRange<Double>, _ suffix: String) -> some View {
+                           _ range: ClosedRange<Double>, _ suffix: String,
+                           step: Double = 0.1) -> some View {
         HStack {
             Text(title).font(.system(size: 15))
             Spacer()
             Button {
-                v.wrappedValue = max(range.lowerBound, ((v.wrappedValue - 0.1) * 10).rounded() / 10)
+                v.wrappedValue = max(range.lowerBound, ((v.wrappedValue - step) * 100).rounded() / 100)
             } label: { Image(systemName: "minus").frame(width: 40, height: 34) }
                 .buttonStyle(.plain)
             TextField("", value: v, format: .number.precision(.fractionLength(0...2)))
@@ -800,7 +798,7 @@ struct DrillScreen: View {
                     if nv > range.upperBound { v.wrappedValue = range.upperBound }
                 }
             Button {
-                v.wrappedValue = min(range.upperBound, ((v.wrappedValue + 0.1) * 10).rounded() / 10)
+                v.wrappedValue = min(range.upperBound, ((v.wrappedValue + step) * 100).rounded() / 100)
             } label: { Image(systemName: "plus").frame(width: 40, height: 34) }
                 .buttonStyle(.plain)
             Text(suffix).font(.system(size: 13)).foregroundStyle(.secondary)
@@ -811,10 +809,11 @@ struct DrillScreen: View {
         NavigationStack {
             Form {
                 Section {
-                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒")
-                    numberRow("换下一句之前", $gapOut, 0...6, "秒")
+                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒", step: 0.2)
+                    numberRow("换下一句之前", $gapOut, 0...6, "秒", step: 0.2)
                 } footer: {
-                    Text("跟不上就调长，顺了就调短。0 就是不停顿，一遍接一遍。")
+                    Text("加减一次动 0.2 秒（0.1 太碎，得点半天）；中间的数字点开可以直接打。\n"
+                         + "跟不上就调长，顺了就调短。0 就是不停顿，一遍接一遍。")
                 }
             }
             .navigationTitle("播放间隔")
@@ -871,8 +870,8 @@ struct DrillScreen: View {
                 Section("播放") {
                     Toggle("切到一句就自动播放", isOn: $autoPlay)
                     Toggle("一段播完自动下一句", isOn: $autoNext)
-                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒")
-                    numberRow("换下一句之前", $gapOut, 0...6, "秒")
+                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒", step: 0.2)
+                    numberRow("换下一句之前", $gapOut, 0...6, "秒", step: 0.2)
                     Picker("循环遍数", selection: $loopTimes) {
                         Text("一直循环").tag(0)
                         ForEach([2, 3, 5, 10], id: \.self) { Text("\($0) 遍").tag($0) }
