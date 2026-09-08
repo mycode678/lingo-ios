@@ -191,6 +191,11 @@ enum Api {
         return Dictionary(uniqueKeysWithValues: r.days.compactMap { k, v in Int(k).map { ($0, v) } })
     }
     static func counts() async throws -> Counts { try await get("/api/counts", as: Counts.self) }
+
+    /// 服务器认出来的是哪个账号 —— 收藏、进度、难点、录音都是按这个分开存的，
+    /// 换个账号登录看到的就是另一套库。
+    struct Who: Codable { var u: String; var admin: Bool }
+    static func whoami() async throws -> Who { try await get("/api/whoami", as: Who.self) }
     static func hist() async throws -> [HistWord] {
         try await get("/api/hist?n=40", as: HistResp.self).words
     }

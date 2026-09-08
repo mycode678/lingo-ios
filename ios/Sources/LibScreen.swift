@@ -139,7 +139,9 @@ struct SettingsScreen: View {
                         Task {
                             do {
                                 let c = try await Api.counts()
+                                let who = try? await Api.whoami()
                                 result = "连上了：\(c.words) 个词 / \(c.cards) 句"
+                                    + (who.map { "　·　当前账号 \($0.u)" } ?? "")
                             } catch {
                                 result = "连不上：\(error.localizedDescription)"
                             }
@@ -154,7 +156,8 @@ struct SettingsScreen: View {
                     Text("服务器")
                 } footer: {
                     Text("家里用局域网地址；在外面填 Cloudflare 隧道的域名。\n"
-                         + "服务器开了 Basic Auth，外网访问会让你输一次账号密码。")
+                         + "账号密码是必填的，局域网也一样。收藏、进度、难点、录音都跟着账号走 —— "
+                         + "换个账号登录就是另一套库。密码在电脑网页版的「我的库 → 账号」里改。")
                 }
 
                 Section {
