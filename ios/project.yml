@@ -21,6 +21,7 @@ targets:
       - Resources
     settings:
       base:
+        PRODUCT_NAME: Lingo                    # 不写的话产物会变成名字为空的 .app
         PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen
         TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
         ENABLE_BITCODE: NO
