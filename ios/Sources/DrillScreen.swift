@@ -67,12 +67,12 @@ struct DrillScreen: View {
                 // 位置钉死：波形、原文、小句各占固定高度，换句子时谁都不动。
                 // 内容多了在自己那一块里滚，不许把别人挤上挤下（切句时整屏乱跳就是这么来的）。
                 VStack(spacing: 8) {
-                    Spacer(minLength: 0).frame(height: 14)
-                    waveBlock
+                    Spacer(minLength: 0).frame(height: 10)
+                    waveBlock(height: waveHeight(geo.size.height))
                     selectionBar
                     // 原文卡吃掉剩下的空间：对同一部手机是固定高度（切句不跳），
                     // 句子长了在卡片里自己滚，不会被截断
-                    sentenceCard(s).frame(maxHeight: .infinity)
+                    sentenceCard(s).frame(minHeight: 96, maxHeight: .infinity)
                     if !vm.chunks.isEmpty {
                         ScrollView { chunkRow }
                             .frame(height: chunkHeight)
@@ -83,10 +83,20 @@ struct DrillScreen: View {
                 // 录完之后的结果单独浮一层，不动上面的布局
                 .overlay(alignment: .bottom) {
                     if rec.hasTake {
-                        ScrollView { takeBlock.padding(.bottom, 6) }
-                            .frame(maxHeight: geo.size.height * 0.46)
-                            .background(.ultraThinMaterial)
-                            .transition(.move(edge: .bottom))
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("跟读结果").font(.system(size: 12)).foregroundStyle(.secondary)
+                                Spacer()
+                                Button { rec.reset() } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 14).padding(.top, 8)
+                            ScrollView { takeBlock.padding(.bottom, 6) }
+                        }
+                        .frame(maxHeight: geo.size.height * 0.46)
+                        .background(.ultraThinMaterial)
+                        .transition(.move(edge: .bottom))
                     }
                 }
                 gradeRow
@@ -150,9 +160,15 @@ struct DrillScreen: View {
         .opacity(disabled ? 0.4 : 1)
     }
 
-    private var waveBlock: some View {
+    /// 中间区大约是屏高减掉上下固定部分；波形最多 190，小屏和横屏按比例缩
+    private func waveHeight(_ screenH: CGFloat) -> CGFloat {
+        let mid = max(120, screenH - 34 - 46 - 100 - 49)
+        return min(190, max(96, mid * 0.45))
+    }
+
+    private func waveBlock(height: CGFloat) -> some View {
         VStack(spacing: 3) {
-            WaveView(vm: vm).frame(height: 190)
+            WaveView(vm: vm).frame(height: height)
             HStack(spacing: 8) {
                 if let sel = vm.selection {
                     Text(String(format: "选区 %.2f–%.2fs", sel.lowerBound, sel.upperBound))
