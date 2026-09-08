@@ -146,19 +146,23 @@ struct DrillScreen: View {
     /// 所有控件收成**一条**横排 —— 横屏宽度够，不必再分两行。
     /// 小句那一排在横屏收起来（竖屏有），换来的高度全给波形。
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
-        VStack(spacing: 6) {
+        // 高度是横屏唯一稀缺的东西（11 Pro Max 横屏只有 ~393）。
+        // 各块的**最小**高度加起来必须留得下：顶栏 34 + 波形 120 + 选区条 36
+        // + 原文 60 + 控制条 36 + 打分 40 ＋ 间距 20 ≈ 346，剩下的全归波形。
+        // 写死一个大 minHeight 会让顶栏被挤出屏幕、打分行被标签栏压住（第一版就是）。
+        VStack(spacing: 4) {
             header
-            waveBlock                                   // 横屏的主角，能占多少占多少
-                .frame(minHeight: 150, maxHeight: .infinity)
+            waveBlock                                   // 横屏的主角：弹性件，剩多少占多少
+                .frame(minHeight: 120, maxHeight: .infinity)
                 .padding(.horizontal, T.side)
             selectionBar
-            sentenceCard(s)                             // 原文最多占三成高，剩下全给波形
-                .frame(height: min(max(66, cardHeight), geo.size.height * 0.26))
+            sentenceCard(s)
+                .frame(height: min(max(60, cardHeight), geo.size.height * 0.24))
                 .padding(.horizontal, T.side)
                 .contentShape(Rectangle())
                 .simultaneousGesture(swipeToStep)
             landscapeBar
-            gradeRow
+            gradeRow(40)
         }
         .padding(.bottom, 2)
         .overlay {
@@ -631,14 +635,16 @@ struct DrillScreen: View {
         return v >= 75 ? .green : (v >= 55 ? .orange : .red)
     }
 
-    private var gradeRow: some View {
+    private var gradeRow: some View { gradeRow(48) }
+    /// 横屏高度紧张，打分行矮一档（40）；竖屏还是 48
+    private func gradeRow(_ h: CGFloat) -> some View {
         HStack(spacing: T.gap) {
-            grade(1, "没听懂", .red); grade(2, "勉强", .orange)
-            grade(3, "会了", .blue); grade(4, "脱口而出", .green)
+            grade(1, "没听懂", .red, h); grade(2, "勉强", .orange, h)
+            grade(3, "会了", .blue, h); grade(4, "脱口而出", .green, h)
         }
         .padding(.horizontal, T.side).padding(.bottom, 6)
     }
-    private func grade(_ q: Int, _ t: String, _ c: Color) -> some View {
+    private func grade(_ q: Int, _ t: String, _ c: Color, _ h: CGFloat = 48) -> some View {
         Button {
             Task {
                 guard let s = store.current else { return }
@@ -651,8 +657,9 @@ struct DrillScreen: View {
                 if autoNext { step(1) }
             }
         } label: {
-            Text(t).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity, minHeight: 48)
+            Text(t).font(.system(size: h < 44 ? 14 : 15, weight: .semibold))
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, minHeight: h)
                 .foregroundStyle(c)
                 .background(c.opacity(0.14))
                 .overlay(RoundedRectangle(cornerRadius: T.ctl, style: .continuous)
