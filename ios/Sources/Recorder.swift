@@ -32,6 +32,9 @@ final class Recorder: NSObject, ObservableObject {
         wrongWords = ["museum"]
         score = Score(words: 88, tone: 76, rhythm: 81)
         message = "听写来自本机识别，只作参考"
+        takePCM = (0..<24000).map { i in                    // 1.5 秒的假波形，好看"我的录音"那条轨
+            Float(sin(Double(i) / 40) * 0.35 * abs(sin(Double(i) / 3000)))
+        }
         let n = 60
         curve = (nat: (0..<n).map { 120 + 40 * sin(Double($0) / 6) },
                  mine: (0..<n).map { 118 + 46 * sin(Double($0) / 5.4) },

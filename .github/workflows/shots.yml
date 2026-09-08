@@ -46,7 +46,7 @@ jobs:
             xcrun simctl ui "$UDID" appearance "$MODE" || true
             xcrun simctl install "$UDID" "$APP"
             xcrun simctl launch "$UDID" com.lingo.listen -demo -screen "$SCREEN" $EXTRA || true
-            sleep 5
+            sleep 8            # 冷启动第一屏要加载音频和对齐，5 秒会截到半成品
             xcrun simctl io "$UDID" screenshot "shots/${DEV// /_}-${SCREEN}-${MODE}${EXTRA// /}.png" || true
             xcrun simctl terminate "$UDID" com.lingo.listen 2>/dev/null || true
           }
