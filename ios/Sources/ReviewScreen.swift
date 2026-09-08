@@ -11,6 +11,17 @@ struct ReviewScreen: View {
     @State private var loading = true
     @State private var toast: String?
     @State private var failed: String?
+    @State private var showStyle = false
+    @State private var showLoop = false
+    // 字号、颜色跟精听台是同一套（同一批 @AppStorage 键），改一边两边都变
+    @AppStorage("ui.sentFont") private var sentFont = 21.0
+    @AppStorage("ui.sentFace") private var sentFace = "system"
+    @AppStorage("ui.sentColor") private var sentColor = ""
+    @AppStorage("ui.cnFont") private var cnFont = 16.0
+    @AppStorage("ui.cnFace") private var cnFace = "system"
+    @AppStorage("ui.cnColor") private var cnColor = ""
+    @AppStorage("ui.cardBg") private var cardBg = ""
+    @AppStorage("drill.times") private var loopTimes = 0
 
     private var card: Api.Card? { queue.indices.contains(i) ? queue[i] : nil }
 
@@ -36,9 +47,14 @@ struct ReviewScreen: View {
                             Text((c.reps ?? 0) > 0 ? "复习 · 练过 \(c.reps ?? 0) 次" : "新句子")
                                 .font(.caption2).foregroundStyle(.secondary)
                             if shown {
-                                Text(c.en).font(.system(size: 23)).multilineTextAlignment(.center)
+                                Text(c.en)
+                                    .font(TX.face(sentFace, sentFont))
+                                    .foregroundStyle(TX.color(sentColor) ?? Color.primary)
+                                    .multilineTextAlignment(.center)
                                 if let cn = c.cn, !cn.isEmpty {
-                                    Text(cn).font(.system(size: 15)).foregroundStyle(.secondary)
+                                    Text(cn)
+                                        .font(TX.face(cnFace, cnFont))
+                                        .foregroundStyle(TX.color(cnColor) ?? Color.secondary)
                                         .multilineTextAlignment(.center)
                                 }
                                 if let g = c.grp, !g.isEmpty {
@@ -52,7 +68,17 @@ struct ReviewScreen: View {
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .card()
+                        .card(TX.color(cardBg))
+                        // 跟精听台一个手感：左右滑就换上下句，往左滑是下一张
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 20)
+                                .onEnded { g in
+                                    let dx = g.translation.width, dy = g.translation.height
+                                    guard abs(dx) > 48, abs(dx) > abs(dy) * 1.5 else { return }
+                                    dx < 0 ? next() : prev()
+                                }
+                        )
 
                         HStack(spacing: 14) {
                             Button { player.isPlaying ? player.pause() : replay() } label: {
@@ -63,14 +89,20 @@ struct ReviewScreen: View {
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
+                            // 点＝开关循环，长按＝循环几遍（跟精听台同一个面板）
                             Button { player.loop.toggle(); if player.loop { replay() } } label: {
-                                Image(systemName: "repeat")
+                                HStack(spacing: 2) {
+                                    Image(systemName: "repeat")
+                                    if player.loop && loopTimes > 0 {
+                                        Text("\(loopTimes)").font(.system(size: 10, weight: .semibold))
+                                    }
+                                }
                             }
                             .buttonStyle(IconButton(on: player.loop))
+                            .onLongPressGesture(minimumDuration: 0.4) { showLoop = true }
                             Button { toDrill(card!) } label: { Image(systemName: "waveform") }
                                 .buttonStyle(IconButton())
-                            Button { next() } label: { Image(systemName: "forward.end") }
-                                .buttonStyle(IconButton())
+                            // 下一张不再放按钮：左右滑就行，跟精听台一致
                         }
 
                         if shown {
@@ -90,6 +122,8 @@ struct ReviewScreen: View {
 
                         if let t = toast {
                             Text(t).font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text("左右滑动换上下句").font(.caption2).foregroundStyle(.tertiary)
                         }
                         Spacer()
                     }
@@ -104,10 +138,15 @@ struct ReviewScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                    HStack(spacing: 2) {
+                        Button { showStyle = true } label: { Image(systemName: "textformat") }
+                        Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                    }
                 }
             }
             .task { await load() }
+            .sheet(isPresented: $showStyle) { StyleSheet() }
+            .sheet(isPresented: $showLoop) { LoopSheet(player: player) }
             .onDisappear { player.pause() }
         }
     }
@@ -159,6 +198,10 @@ struct ReviewScreen: View {
             Player.shared.setSegment(nil, playNow: false)
             Player.shared.play(from: 0)
         }
+    }
+    private func prev() {
+        shown = false; toast = nil
+        if i > 0 { i -= 1; replay() }
     }
     private func next() {
         shown = false; toast = nil

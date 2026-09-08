@@ -94,9 +94,9 @@ extension View {
     @ViewBuilder func prominent(_ on: Bool) -> some View {
         if on { self.buttonStyle(.borderedProminent) } else { self.buttonStyle(.bordered) }
     }
-    func card() -> some View {
+    func card(_ bg: Color? = nil) -> some View {
         self.padding(14)
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(bg ?? Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

@@ -13,7 +13,8 @@ final class NowPlaying {
     var blind = false
     var onNext: (() -> Void)?
     var onPrev: (() -> Void)?
-    var onToggle: (() -> Void)?
+    var onToggle: (() -> Void)?     // 锁屏/耳机上的播放键
+    var onPause: (() -> Void)?      // 真正的暂停（系统打断、控制中心的暂停）
     var onReplay: (() -> Void)?     // 重听这一句/这一段
 
     private var wired = false
@@ -23,7 +24,7 @@ final class NowPlaying {
         wired = true
         let c = MPRemoteCommandCenter.shared()
         c.playCommand.addTarget { [weak self] _ in self?.onToggle?(); return .success }
-        c.pauseCommand.addTarget { [weak self] _ in self?.onToggle?(); return .success }
+        c.pauseCommand.addTarget { [weak self] _ in (self?.onPause ?? self?.onToggle)?(); return .success }
         c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.onToggle?(); return .success }
         c.nextTrackCommand.addTarget { [weak self] _ in self?.onNext?(); return .success }
         c.previousTrackCommand.addTarget { [weak self] _ in self?.onPrev?(); return .success }

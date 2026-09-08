@@ -64,9 +64,9 @@ struct DrillScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showWalk) { WalkScreen(startSegment: vm.selection) }
             .sheet(isPresented: $showMore) { settingsSheet }
-            .sheet(isPresented: $showStyle) { styleSheet }
+            .sheet(isPresented: $showStyle) { StyleSheet() }
             .sheet(isPresented: $showGap) { gapSheet }
-            .sheet(isPresented: $showLoop) { loopSheet }
+            .sheet(isPresented: $showLoop) { LoopSheet(player: player) }
             .sheet(isPresented: Binding(get: { editRate != nil },
                                         set: { if !$0 { editRate = nil } })) { rateSheet }
             .sheet(isPresented: $showList) {
@@ -86,8 +86,212 @@ struct DrillScreen: View {
 
     private func content(_ s: Api.Sentence) -> some View {
         GeometryReader { geo in
-            VStack(spacing: 0) {
-                header
+            Group {
+                if geo.size.width > geo.size.height {
+                    landscape(s, geo)          // 横屏：波形和原文放大，控件收成一条
+                } else {
+                    portrait(s, geo)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+
+        .onAppear {
+            // 复习页和精听页共用一个播放器：在复习里放过 A 句，回到精听页时
+            // 播放器里装的还是 A，点播放就放错人。切回来先对一下是不是当前这句。
+            wireNowPlaying(s)          // 锁屏/耳机的播放键交给这一屏
+            guard player.loadedSrc != s.src else { return }
+            Task {
+                player.pause()
+                try? await Player.shared.load(src: s.src)
+                player.claim(loop: player.loop, times: loopTimes, segment: vm.selection,
+                             onEnd: { autoAdvance(after: s.src) })
+            }
+        }
+        .task(id: s.src) {
+            await vm.load(s)
+            vm.snap = snap
+            player.gapIn = gapIn
+            player.claim(loop: player.loop, times: loopTimes,
+                         segment: vm.selection,
+                         onEnd: { autoAdvance(after: s.src) })
+            player.boostHF = boostHF
+            rec.reset()
+            showText = true
+            flash = nil
+            wireVolumeKeys()
+            wireNowPlaying(s)
+            // 截图用：-sheet list|gap|rate 启动就把对应面板打开（抽屉里的布局也要验）
+            if Demo.on, let sh = Demo.sheet {
+                switch sh {
+                case "list": showList = true
+                case "gap":  showGap = true
+                case "rate": editRate = 1
+                default: break
+                }
+            }
+            // 切到一句就自动响。走路时用音量键切句、屏幕黑着，不自动播等于没法用。
+            if autoPlay { player.play(from: vm.selection?.lowerBound ?? 0) }
+        }
+        .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
+        .onChange(of: boostHF) { _, v in player.boostHF = v }
+        .onDisappear {
+            player.onSegmentEnd = nil
+            VolumeKeys.shared.enable(false)          // 离开就把音量键还给系统
+        }
+    }
+
+    /// 横屏：屏幕矮而宽，正好给波形。
+    /// 波形吃掉一半以上的高度（圈选区终于不用捏着放大镜找），原文放大摆在下面，
+    /// 所有控件收成**一条**横排 —— 横屏宽度够，不必再分两行。
+    /// 小句那一排在横屏收起来（竖屏有），换来的高度全给波形。
+    private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
+        VStack(spacing: 6) {
+            header
+            waveBlock
+                .frame(minHeight: 120, maxHeight: .infinity)
+                .padding(.horizontal, T.side)
+            selectionBar
+            sentenceCard(s)
+                .frame(height: min(max(72, cardHeight), geo.size.height * 0.3))
+                .padding(.horizontal, T.side)
+                .contentShape(Rectangle())
+                .simultaneousGesture(swipeToStep)
+            landscapeBar
+            gradeRow
+        }
+        .overlay {
+            if let h = stepHint {
+                Text(h)
+                    .font(.system(size: 18, weight: .semibold))
+                    .multilineTextAlignment(.center).lineSpacing(4)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background(Color.black.opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .transition(.opacity).allowsHitTesting(false)
+            }
+        }
+        // 录完的结果照样浮一层，不动上面的布局
+        .overlay(alignment: .bottom) {
+            if rec.hasTake {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("跟读结果").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Spacer()
+                        Button { rec.playAB(range: vm.selection) } label: {
+                            Label("对比", systemImage: "arrow.left.arrow.right").font(.system(size: 12))
+                        }
+                        .buttonStyle(QuietButton())
+                        Button { rec.reset() } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.top, 8)
+                    ScrollView { takeBlock.padding(.bottom, 6) }
+                }
+                .frame(maxHeight: geo.size.height * 0.62)
+                .background(.ultraThinMaterial)
+                .transition(.move(edge: .bottom))
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// 横屏专用的那一条：句子列表、播放、整句、铺满、循环、间隔、录音、倍速，全在一行
+    private var landscapeBar: some View {
+        HStack(spacing: 6) {
+            Button { showList = true } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet").font(.system(size: 12))
+                    Text("\(store.index + 1)/\(store.items.count)")
+                        .font(.system(size: 13, weight: .medium)).monospacedDigit()
+                }
+                .foregroundStyle(Color.primary.opacity(0.75))
+                .padding(.horizontal, 9).frame(height: 36)
+                .background(Color.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            Button { player.toggle() } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 17))
+                    .frame(width: 44, height: 36)
+                    .background(Color.accentColor).foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                vm.setSelection(a: nil, b: nil, play: false)
+                vm.zoomAll()
+                player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                player.play(from: 0)
+            } label: { Label("整句", systemImage: "rectangle.dashed") }
+            .buttonStyle(LabelButton(on: vm.selection == nil))
+
+            Button { vm.zoomToSelection() } label: {
+                Label("铺满", systemImage: "arrow.left.and.right")
+            }
+            .buttonStyle(LabelButton())
+            .disabled(vm.selection == nil).opacity(vm.selection == nil ? 0.35 : 1)
+
+            Button { player.loop.toggle(); player.loop ? player.play() : player.pause() } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "repeat")
+                    if player.loop && loopTimes > 0 {
+                        Text("\(loopTimes)").font(.system(size: 10, weight: .semibold))
+                    }
+                }
+            }
+            .buttonStyle(IconButton(on: player.loop))
+            .onLongPressGesture(minimumDuration: 0.4) { showLoop = true }
+
+            Button { showGap = true } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "timer").font(.system(size: 12))
+                    Text(gapIn == 0 ? "不停" : "\(gapIn, specifier: "%.1f")s")
+                        .font(.system(size: 13, weight: .medium)).monospacedDigit()
+                }
+                .foregroundStyle(Color.primary.opacity(0.75))
+                .padding(.horizontal, 8).frame(height: 36)
+                .background(Color.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
+                                : rec.start()
+            } label: {
+                Image(systemName: rec.isRecording ? "stop.circle.fill" : "mic")
+                    .foregroundStyle(rec.isRecording ? Color.red : Color.primary.opacity(0.55))
+            }
+            .buttonStyle(IconButton())
+
+            ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
+                rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001,
+                         tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
+                         hold: { editRate = i })
+            }
+            rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
+                     on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001,
+                     tap: {
+                         if customRate > 0 { player.rate = Float(customRate)
+                                             if player.isPlaying { player.play() } }
+                         else { editRate = -1 }
+                     },
+                     hold: { editRate = -1 })
+        }
+        .padding(.horizontal, T.side)
+    }
+
+    /// 竖屏：从上到下 顶栏 → 波形 → 选区条 → 原文 → 小句 → 打分 → 播放条
+    private func portrait(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
+        VStack(spacing: 0) {
+            header
                 // 位置钉死：波形、原文、小句各占固定高度，换句子时谁都不动。
                 // 内容多了在自己那一块里滚，不许把别人挤上挤下（切句时整屏乱跳就是这么来的）。
                 // 高度不手算：波形当弹性件，剩多少占多少（最少 88）。
@@ -161,49 +365,6 @@ struct DrillScreen: View {
                 transport
             }
             .frame(width: geo.size.width)
-        }
-        .onAppear {
-            // 复习页和精听页共用一个播放器：在复习里放过 A 句，回到精听页时
-            // 播放器里装的还是 A，点播放就放错人。切回来先对一下是不是当前这句。
-            wireNowPlaying(s)          // 锁屏/耳机的播放键交给这一屏
-            guard player.loadedSrc != s.src else { return }
-            Task {
-                player.pause()
-                try? await Player.shared.load(src: s.src)
-                player.claim(loop: player.loop, times: loopTimes, segment: vm.selection,
-                             onEnd: { autoAdvance(after: s.src) })
-            }
-        }
-        .task(id: s.src) {
-            await vm.load(s)
-            vm.snap = snap
-            player.gapIn = gapIn
-            player.claim(loop: player.loop, times: loopTimes,
-                         segment: vm.selection,
-                         onEnd: { autoAdvance(after: s.src) })
-            player.boostHF = boostHF
-            rec.reset()
-            showText = true
-            flash = nil
-            wireVolumeKeys()
-            wireNowPlaying(s)
-            // 截图用：-sheet list|gap|rate 启动就把对应面板打开（抽屉里的布局也要验）
-            if Demo.on, let sh = Demo.sheet {
-                switch sh {
-                case "list": showList = true
-                case "gap":  showGap = true
-                case "rate": editRate = 1
-                default: break
-                }
-            }
-            // 切到一句就自动响。走路时用音量键切句、屏幕黑着，不自动播等于没法用。
-            if autoPlay { player.play(from: vm.selection?.lowerBound ?? 0) }
-        }
-        .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
-        .onChange(of: boostHF) { _, v in player.boostHF = v }
-        .onDisappear {
-            player.onSegmentEnd = nil
-            VolumeKeys.shared.enable(false)          // 离开就把音量键还给系统
         }
     }
 
@@ -668,44 +829,6 @@ struct DrillScreen: View {
         .presentationDetents([.height(260)])
     }
 
-    private var loopSheet: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    ForEach([0, 2, 3, 5, 10], id: \.self) { n in
-                        Button {
-                            loopTimes = n; player.loopTimes = n
-                            if !player.loop { player.loop = true; player.play() }
-                            showLoop = false
-                        } label: {
-                            HStack {
-                                Text(n == 0 ? "一直循环，直到我停" : "循环 \(n) 遍")
-                                Spacer()
-                                if loopTimes == n { Image(systemName: "checkmark")
-                                    .foregroundStyle(Color.accentColor) }
-                            }
-                        }
-                        .foregroundStyle(Color.primary)
-                    }
-                    Stepper(value: Binding(get: { max(2, loopTimes) },
-                                           set: { loopTimes = $0; player.loopTimes = $0 }),
-                            in: 2...50) {
-                        HStack { Text("自己定")
-                            Spacer()
-                            Text("\(max(2, loopTimes)) 遍").foregroundStyle(.secondary).monospacedDigit() }
-                    }
-                } footer: {
-                    Text("循环键长按就能到这儿。设了遍数以后，循环键上会显示数字。")
-                }
-            }
-            .navigationTitle("循环几遍")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
-                Button("完成") { showLoop = false } } }
-        }
-        .presentationDetents([.height(400)])
-    }
-
     private var rateSheet: some View {
         let i = editRate ?? 0
         let custom = (i < 0)
@@ -794,73 +917,6 @@ struct DrillScreen: View {
     }
 
     /// 原文/译文的样式：字体、字号、颜色、卡片底色，上面实时预览
-    private var styleSheet: some View {
-        NavigationStack {
-            Form {
-                Section("预览") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Excuse me, can you tell me the way to the museum please?")
-                            .font(face(sentFace, sentFont))
-                            .foregroundStyle(color(sentColor) ?? Color.primary)
-                        Text("劳驾，请问去博物馆怎么走？")
-                            .font(face(cnFace, cnFont))
-                            .foregroundStyle(color(cnColor) ?? Color.secondary)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(color(cardBg) ?? Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                Section("原文") {
-                    Picker("字体", selection: $sentFace) { faceOptions }
-                    sizeRow("字号", $sentFont, 14...48)
-                    colorRow("颜色", $sentColor)
-                }
-                Section("译文") {
-                    Picker("字体", selection: $cnFace) { faceOptions }
-                    sizeRow("字号", $cnFont, 11...40)
-                    colorRow("颜色", $cnColor)
-                }
-                Section("卡片底色") { colorRow("底色", $cardBg) }
-                Section {
-                    Button("全部恢复默认") {
-                        sentFace = "system"; sentFont = 21; sentColor = ""
-                        cnFace = "system"; cnFont = 16; cnColor = ""; cardBg = ""
-                    }
-                }
-            }
-            .navigationTitle("原文样式").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
-                Button("完成") { showStyle = false } } }
-        }
-    }
-    private var faceOptions: some View {
-        Group {
-            Text("系统").tag("system")
-            Text("圆体").tag("rounded")
-            Text("衬线").tag("serif")
-            Text("等宽").tag("mono")
-        }
-    }
-    private func sizeRow(_ t: String, _ v: Binding<Double>, _ r: ClosedRange<Double>) -> some View {
-        HStack {
-            Text(t)
-            Slider(value: v, in: r, step: 1)
-            Text("\(Int(v.wrappedValue))").monospacedDigit()
-                .foregroundStyle(.secondary).frame(width: 28)
-        }
-    }
-    private func colorRow(_ t: String, _ hex: Binding<String>) -> some View {
-        HStack {
-            ColorPicker(t, selection: Binding(
-                get: { color(hex.wrappedValue) ?? Color.primary },
-                set: { hex.wrappedValue = $0.hexString }))
-            if !hex.wrappedValue.isEmpty {
-                Button("默认") { hex.wrappedValue = "" }.font(.caption).buttonStyle(.bordered)
-            }
-        }
-    }
-
     // MARK: - 小工具
 
     /// 把句子拆成词，播到哪个词就给哪个词加浅黄底。
@@ -893,15 +949,8 @@ struct DrillScreen: View {
         return out
     }
 
-    private func face(_ name: String, _ size: Double) -> Font {
-        switch name {
-        case "rounded": return .system(size: size, design: .rounded)
-        case "serif":   return .system(size: size, design: .serif)
-        case "mono":    return .system(size: size, design: .monospaced)
-        default:        return .system(size: size)
-        }
-    }
-    private func color(_ hex: String) -> Color? { hex.isEmpty ? nil : Color(hex: hex) }
+    private func face(_ name: String, _ size: Double) -> Font { TX.face(name, size) }
+    private func color(_ hex: String) -> Color? { TX.color(hex) }
     private var isFav: Bool { (store.prog[store.current?.src ?? ""]?.fav ?? 0) == 1 }
     private func toggleFav() async {
         guard let s = store.current else { return }
@@ -958,7 +1007,10 @@ struct DrillScreen: View {
         np.title = s.en
         np.subtitle = store.word + (s.gnum.map { " · " + $0 } ?? "")
         np.blind = false
-        np.onToggle = { player.toggle() }
+        // 练的时候按锁屏/耳机上的播放键，想要的是"再听一遍"，不是暂停 ——
+        // 所以这个键一律重放当前这句（有选区就从选区头），暂停留给控制中心那个暂停键。
+        np.onToggle = { player.play(from: vm.selection?.lowerBound ?? 0) }
+        np.onPause = { player.pause() }
         np.onNext = { step(1) }
         np.onPrev = { step(-1) }
         np.onReplay = { player.play(from: vm.selection?.lowerBound ?? 0) }
