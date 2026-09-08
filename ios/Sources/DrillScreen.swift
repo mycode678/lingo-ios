@@ -99,6 +99,7 @@ struct DrillScreen: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .coordinateSpace(name: "drill")           // 体检按这个坐标系算，转屏截图也不会算错
             .onPreferenceChange(BlockKey.self) { blocks in
                 Audit.check(blocks, screen: geo.size)      // 只在 -demo -audit 下工作
             }

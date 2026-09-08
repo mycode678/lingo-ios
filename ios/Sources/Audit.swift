@@ -20,12 +20,15 @@ struct BlockKey: PreferenceKey {
 }
 
 extension View {
-    /// 给一块命名，体检时报它的实际位置
+    /// 给一块命名，体检时报它的实际位置。
+    /// 坐标一定要相对"精听台这一屏"（.named("drill")）来算，不能用 .global ——
+    /// 截横屏时整个界面是转了 90 度画出来的，global 坐标跟着转，报出来全是假重叠。
     func auditBlock(_ name: String) -> some View {
         background(
             GeometryReader { g in
                 Color.clear.preference(key: BlockKey.self,
-                                       value: [BlockFrame(name: name, rect: g.frame(in: .global))])
+                                       value: [BlockFrame(name: name,
+                                                          rect: g.frame(in: .named("drill")))])
             }
         )
     }

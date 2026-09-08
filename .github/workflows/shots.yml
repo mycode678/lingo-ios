@@ -74,6 +74,7 @@ jobs:
       # 组合覆盖：竖屏/横屏 × 大屏/SE × 文字全开(大字号)。
       # 这一步就是为了不再靠"看截图猜"，也不再让用户当测试员。
       - name: 布局体检
+        continue-on-error: true          # 体检失败也要接着跑交互测试，一次看全
         run: |
           cd ios
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
@@ -94,7 +95,7 @@ jobs:
             grep -E "AUDIT|LAYOUT-" "$OUT" | tail -20 || true
             if grep -q "LAYOUT-FAIL" "$OUT"; then fail=1; fi
           }
-          audit "iPhone 15 Pro Max" ""
+          audit "iPhone 15 Pro Max" ""            # 竖屏，四样文字全开＋大字号
           audit "iPhone 15 Pro Max" "-land"
           audit "iPhone SE (3rd generation)" ""
           [ "$fail" = "0" ] || { echo "::error::布局体检有重叠/超屏"; exit 1; }
