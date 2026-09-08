@@ -443,7 +443,7 @@ struct DrillScreen: View {
     /// 收藏、难点这些次高频的收成小图标排在右边，尺寸压到 36 保证 SE 也塞得下。
     private var transport: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 22))
@@ -476,6 +476,31 @@ struct DrillScreen: View {
                 Button { Task { await vm.toggleMark() } } label: { Image(systemName: "flag") }
                     .buttonStyle(IconButton(on: !vm.marks.isEmpty))
 
+                // 循环间隔：跟播放键放同一排，点一下就能改。
+                // 这是练的时候一直在动的东西（跟不上就拉长、顺了就缩短），
+                // 埋在设置抽屉里等于没有。牌子上显示的是"同一段两遍之间"那个值。
+                Menu {
+                    Picker("同一段两遍之间", selection: $gapIn) {
+                        ForEach([0.0, 0.3, 0.5, 0.8, 1.2, 2.0, 3.0, 4.0], id: \.self) {
+                            Text($0 == 0 ? "不停顿" : "\($0, specifier: "%.1f") 秒").tag($0)
+                        }
+                    }
+                    Picker("换下一句之前", selection: $gapOut) {
+                        ForEach([0.0, 0.5, 1.0, 1.5, 2.0, 3.0], id: \.self) {
+                            Text($0 == 0 ? "不停顿" : "\($0, specifier: "%.1f") 秒").tag($0)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "timer").font(.system(size: 12))
+                        Text(gapIn == 0 ? "不停" : "\(gapIn, specifier: "%.1f")s")
+                            .font(.system(size: 13, weight: .medium)).monospacedDigit()
+                    }
+                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .padding(.horizontal, 9).frame(height: 34)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
             }
             HStack(spacing: T.gap) {
                 // 选句子：以前在顶栏，够不着 —— 挪到这儿，跟倍速同一行，不多占高度
