@@ -364,6 +364,7 @@ struct WaveView: UIViewRepresentable {
     @ObservedObject var player = Player.shared
 
     func makeUIView(context: Context) -> WaveUIView {
+        // 给 UI 测试一个抓手：波形是自绘的 UIView，没名字就没法在测试里对它长按拖动
         let v = WaveUIView()
         v.onNeedEnvelope = { n, a, b in Player.shared.envelope(width: n, from: a, to: b) }
         v.onSelectionChanged = { a, b, play in
@@ -371,6 +372,9 @@ struct WaveView: UIViewRepresentable {
         }
         v.onHeadChanged = { t in Player.shared.seek(to: t) }
         v.onViewChanged = { a, b in vm.view = (a, b) }
+        v.isAccessibilityElement = true
+        v.accessibilityIdentifier = "waveform"
+        v.accessibilityTraits = .allowsDirectInteraction   // 让测试的长按拖动直接落到这块上
         return v
     }
 

@@ -19,6 +19,8 @@ enum Demo {
     /// 模拟器转不了屏，截横屏只能这么来：按横屏的宽高渲染，再整体转 90 度。
     /// 布局算的是"宽比高大就走横屏那套"，这样验出来的尺寸跟真机横屏一致。
     static var land: Bool { ProcessInfo.processInfo.arguments.contains("-land") }
+    /// -audit：布局体检模式 —— 把文字全打开、字号拉大，专门制造"内容最多"的情况
+    static var audit: Bool { ProcessInfo.processInfo.arguments.contains("-audit") }
     /// -take：假装刚录完一条，用来截"跟读结果"那块
     static var take: Bool { ProcessInfo.processInfo.arguments.contains("-take") }
     /// 抽屉里的东西光靠主屏截不到：-sheet list|gap|rate 启动就把对应面板打开

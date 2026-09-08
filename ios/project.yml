@@ -42,3 +42,16 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+
+  # 真机式自测：模拟器里真的转屏、真的点、真的滑，断言"能不能点到""滚不滚得动"。
+  # 静态截图看不出手势能不能用 —— 横屏控制条滚不动那种问题只有真滑一次才知道。
+  LingoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Lingo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen.uitests
+        GENERATE_INFOPLIST_FILE: YES

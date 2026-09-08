@@ -18,6 +18,14 @@ struct LingoApp: App {
 
     init() {
         NowPlaying.shared.wire()
+        if Demo.audit {
+            // 体检模式：把"内容最多"的情况造出来 —— 四样文字全开、字号拉大。
+            // 布局要是会压，这种组合最容易压。
+            let d = UserDefaults.standard
+            for k in ["show2.en", "show2.cn", "show2.dfe", "show2.dcn"] { d.set(true, forKey: k) }
+            d.set(30.0, forKey: "ui.sentFont")
+            d.set(22.0, forKey: "ui.cnFont")
+        }
     }
 
     var body: some Scene {

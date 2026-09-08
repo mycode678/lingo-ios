@@ -70,6 +70,45 @@ jobs:
           shoot "iPhone 15 Pro Max" "drill" light "-land -take"
           ls -la shots
 
+      # ---- 布局体检：App 自己把每块的真实坐标报出来，重叠/超屏就 LAYOUT-FAIL ----
+      # 组合覆盖：竖屏/横屏 × 大屏/SE × 文字全开(大字号)。
+      # 这一步就是为了不再靠"看截图猜"，也不再让用户当测试员。
+      - name: 布局体检
+        run: |
+          cd ios
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          fail=0
+          audit () {
+            DEV="$1"; EXTRA="$2"
+            UDID=$(xcrun simctl list devices available | grep -m1 "$DEV (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
+            [ -z "$UDID" ] && { echo "找不到 $DEV"; return; }
+            xcrun simctl boot "$UDID" 2>/dev/null || true
+            xcrun simctl bootstatus "$UDID" -b || true
+            xcrun simctl install "$UDID" "$APP"
+            OUT="audit-${DEV// /_}-${EXTRA// /}.log"
+            ( xcrun simctl launch --console-pty "$UDID" com.lingo.listen \
+                -demo -screen drill -audit $EXTRA > "$OUT" 2>&1 & ) || true
+            sleep 12
+            xcrun simctl terminate "$UDID" com.lingo.listen 2>/dev/null || true
+            echo "===== $DEV $EXTRA"
+            grep -E "AUDIT|LAYOUT-" "$OUT" | tail -20 || true
+            if grep -q "LAYOUT-FAIL" "$OUT"; then fail=1; fi
+          }
+          audit "iPhone 15 Pro Max" ""
+          audit "iPhone 15 Pro Max" "-land"
+          audit "iPhone SE (3rd generation)" ""
+          [ "$fail" = "0" ] || { echo "::error::布局体检有重叠/超屏"; exit 1; }
+
+      # ---- 真机式交互测试：真的转屏、真的点、真的滑 ----
+      # 静态截图看不出"手势能不能用""这条能不能滚"，这一步专治那类问题。
+      - name: 交互测试
+        run: |
+          cd ios
+          xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
+            -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max' \
+            -only-testing:LingoUITests \
+            CODE_SIGNING_ALLOWED=NO | tail -40
+
       - uses: actions/upload-artifact@v4
         with:
           name: screenshots
