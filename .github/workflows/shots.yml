@@ -1,0 +1,62 @@
+# 云端跑 iOS 模拟器，自动截图 —— 相当于网页那边的 headless Chrome。
+# 改完布局先看这些图，别让人肉眼替我 debug。
+name: screenshots
+
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/shots.yml"]
+  workflow_dispatch:
+
+jobs:
+  shots:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: 选 Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.1.app
+      - name: 装 XcodeGen
+        run: brew install xcodegen
+      - name: 生成工程
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: 编译模拟器版
+        working-directory: ios
+        run: |
+          xcodebuild -project Lingo.xcodeproj -scheme Lingo -configuration Debug \
+            -sdk iphonesimulator -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: 启动模拟器、逐屏截图
+        working-directory: ios
+        run: |
+          set -e
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          echo "app=$APP"
+          mkdir -p shots
+          shoot () {   # $1=设备 $2=屏名
+            DEV="$1"; SCREEN="$2"
+            UDID=$(xcrun simctl list devices available | grep -m1 "$DEV (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
+            [ -z "$UDID" ] && { echo "找不到 $DEV"; return; }
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b || true
+            xcrun simctl uninstall "$UDID" com.lingo.listen || true
+            xcrun simctl install "$UDID" "$APP"
+            xcrun simctl launch "$UDID" com.lingo.listen -demo -screen "$SCREEN" || true
+            sleep 6
+            xcrun simctl io "$UDID" screenshot "shots/${DEV// /_}-${SCREEN}.png" || true
+            xcrun simctl terminate "$UDID" com.lingo.listen || true
+          }
+          for S in dict drill review lib; do
+            shoot "iPhone 15 Pro Max" "$S"
+          done
+          shoot "iPhone SE (3rd generation)" "drill"
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ios/shots/*.png
+          retention-days: 14

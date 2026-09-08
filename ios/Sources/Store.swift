@@ -23,6 +23,15 @@ final class Store: ObservableObject {
     func look(_ w: String) async {
         let w = w.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !w.isEmpty else { return }
+        if Demo.on {
+            word = Demo.word; items = Demo.sentences; prog = [:]; inLib = true
+            entryHTML = "<div class=\"entry\"><span class=\"pos\">verb</span> "
+                      + "<span class=\"sensenum\">1</span> "
+                      + "<span class=\"def\">used when you want to get someone's attention politely</span>"
+                      + "<span class=\"defcn\">劳驾</span></div>"
+            index = 0
+            return
+        }
         loading = true; error = nil
         defer { loading = false }
         do {
@@ -93,6 +102,16 @@ final class DrillModel: ObservableObject {
         let saved = rememberSelection ? Self.savedSelection(s.src) : nil
         loading = true; note = ""
         selection = nil; words = []; marks = []; chunks = []
+        if Demo.on {
+            try? await Player.shared.load(src: s.src)
+            view = (0, Player.shared.duration)
+            let i = Int(s.src.filter(\.isNumber)) ?? 1
+            words = Demo.words[min(max(0, i - 1), Demo.words.count - 1)]
+            chunks = Self.cutChunks(words)
+            marks = []
+            loading = false
+            return
+        }
         do {
             try await Player.shared.load(src: s.src)
             view = (0, Player.shared.duration)

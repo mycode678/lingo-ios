@@ -35,6 +35,16 @@ struct LingoApp: App {
             .tint(Color(hex: accent))
             .preferredColorScheme(scheme == "light" ? .light : (scheme == "dark" ? .dark : nil))
             .task {
+                if Demo.on {
+                    await store.look(Demo.word)
+                    switch Demo.screen {
+                    case "drill":  nav.tab = 1
+                    case "review": nav.tab = 2
+                    case "lib":    nav.tab = 3
+                    default:       nav.tab = 0
+                    }
+                    return
+                }
                 await store.loadDueCount()
                 await store.loadHist()
             }
