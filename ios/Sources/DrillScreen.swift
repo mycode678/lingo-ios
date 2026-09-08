@@ -155,8 +155,9 @@ struct DrillScreen: View {
     /// 小句那一排在横屏收起来（竖屏有），换来的高度全给波形。
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         // 高度是横屏唯一稀缺的东西：11 Pro Max 横屏 414，减去标签栏和home条只剩约 344。
-        // 固定部分：顶栏 34 + 选区条 28 + 控制条 36 + 打分 38 + 间距 16 ＝ 152，
-        // 剩下的 190 全归波形（文字默认不显示，勾了才占位）。
+        // 固定部分：顶栏 34 + 选区条 28 + 小句 40 + 控制条 44 + 打分 38 + 间距 20 ＝ 204，
+        // 加上藏了标签栏多出来的约 50 点，剩下的 190 左右全归波形
+        // （文字默认不显示，勾了才占位）。
         // 别给波形写死大 minHeight，总和一超就是顶栏被切掉半截（1.jpg 那样）。
         VStack(spacing: 4) {
             // 上半截（顶栏、波形、选区条、原文）单独一层：跟读结果只浮在这一截上，
@@ -167,6 +168,7 @@ struct DrillScreen: View {
                     .frame(minHeight: 110, maxHeight: .infinity)
                     .padding(.horizontal, T.side)
                 selectionBar(28)
+                if !vm.chunks.isEmpty { chunkStrip }    // 小句：圈半秒反复听的入口
                 if anyText {                            // 一样都没勾就整块不出现
                     sentenceCard(s)
                         .frame(height: min(cardHeight, geo.size.height * 0.3))
@@ -651,26 +653,41 @@ struct DrillScreen: View {
         .cardStyle(color(cardBg))
     }
 
+    /// 一块小句：点一下就圈住这几个词。竖屏换行排，横屏排一行横着滑。
+    private func chunkChip(_ i: Int, _ c: (Int, Int)) -> some View {
+        let a = vm.words[c.0].s, b = vm.words[c.1].e
+        let on = vm.selection.map { abs($0.lowerBound - a) < 0.02 && abs($0.upperBound - b) < 0.02 } ?? false
+        return Button { vm.selectChunk(i) } label: {
+            HStack(spacing: 5) {
+                Text(vm.words[c.0...c.1].map(\.w).joined(separator: " ")).lineLimit(1)
+                Text(String(format: "%.1f", b - a)).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            .font(.system(size: 13.5))
+            .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.8))
+            .padding(.horizontal, 11).padding(.vertical, 9)
+            .background(on ? Color.accentColor.opacity(0.13) : Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var chunkRow: some View {
         FlowLayout(spacing: 7) {
-            ForEach(Array(vm.chunks.enumerated()), id: \.offset) { i, c in
-                let a = vm.words[c.0].s, b = vm.words[c.1].e
-                let on = vm.selection.map { abs($0.lowerBound - a) < 0.02 && abs($0.upperBound - b) < 0.02 } ?? false
-                Button { vm.selectChunk(i) } label: {
-                    HStack(spacing: 5) {
-                        Text(vm.words[c.0...c.1].map(\.w).joined(separator: " ")).lineLimit(1)
-                        Text(String(format: "%.1f", b - a)).font(.system(size: 10)).foregroundStyle(.secondary)
-                    }
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.8))
-                    .padding(.horizontal, 11).padding(.vertical, 9)
-                    .background(on ? Color.accentColor.opacity(0.13) : Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
+            ForEach(Array(vm.chunks.enumerated()), id: \.offset) { i, c in chunkChip(i, c) }
         }
         .padding(.horizontal, T.side)
+    }
+
+    /// 横屏用：小句排成一行横着滑，只占 40 点。
+    /// 上一版横屏干脆把小句砍了，可小句正是"圈半秒反复听"的入口，砍不得。
+    private var chunkStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(Array(vm.chunks.enumerated()), id: \.offset) { i, c in chunkChip(i, c) }
+            }
+            .padding(.horizontal, T.side)
+        }
+        .frame(height: 40)
     }
 
     private var takeBlock: some View {
