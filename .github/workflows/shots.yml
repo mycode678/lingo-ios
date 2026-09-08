@@ -47,7 +47,7 @@ jobs:
             xcrun simctl install "$UDID" "$APP"
             xcrun simctl launch "$UDID" com.lingo.listen -demo -screen "$SCREEN" $EXTRA || true
             sleep 5
-            xcrun simctl io "$UDID" screenshot "shots/${DEV// /_}-${SCREEN}-${MODE}${EXTRA}.png" || true
+            xcrun simctl io "$UDID" screenshot "shots/${DEV// /_}-${SCREEN}-${MODE}${EXTRA// /}.png" || true
             xcrun simctl terminate "$UDID" com.lingo.listen 2>/dev/null || true
           }
           # 同一台机器不反复重启，省一大半时间
@@ -58,6 +58,10 @@ jobs:
           shoot "iPhone 15 Pro Max" "drill" light "-select"
           shoot "iPhone SE (3rd generation)" "drill" light
           shoot "iPhone SE (3rd generation)" "drill" light "-select"
+          # 抽屉里的三块也截下来：句子列表（筛选行要钉在顶上）、间隔面板、改倍速面板
+          shoot "iPhone 15 Pro Max" "drill" light "-sheet list"
+          shoot "iPhone 15 Pro Max" "drill" light "-sheet gap"
+          shoot "iPhone 15 Pro Max" "drill" light "-sheet rate"
           ls -la shots
 
       - uses: actions/upload-artifact@v4

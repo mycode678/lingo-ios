@@ -167,6 +167,15 @@ struct DrillScreen: View {
             showText = true
             flash = nil
             wireVolumeKeys()
+            // 截图用：-sheet list|gap|rate 启动就把对应面板打开（抽屉里的布局也要验）
+            if Demo.on, let sh = Demo.sheet {
+                switch sh {
+                case "list": showList = true
+                case "gap":  showGap = true
+                case "rate": editRate = 1
+                default: break
+                }
+            }
             // 切到一句就自动响。走路时用音量键切句、屏幕黑着，不自动播等于没法用。
             if autoPlay { player.play(from: vm.selection?.lowerBound ?? 0) }
         }

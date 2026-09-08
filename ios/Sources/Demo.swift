@@ -16,6 +16,12 @@ enum Demo {
     static let word = "excuse"
     /// -select 1 时预先圈一段，方便截图看"有选区"的样子
     static var preselect: Bool { ProcessInfo.processInfo.arguments.contains("-select") }
+    /// 抽屉里的东西光靠主屏截不到：-sheet list|gap|rate 启动就把对应面板打开
+    static var sheet: String? {
+        let a = ProcessInfo.processInfo.arguments
+        guard let i = a.firstIndex(of: "-sheet"), i + 1 < a.count else { return nil }
+        return a[i + 1]
+    }
 
     static let sentences: [Api.Sentence] = [
         .init(src: "/demo/1.mp3",
