@@ -30,10 +30,12 @@ struct DrillScreen: View {
     @AppStorage("drill.times") private var loopTimes = 0
     @AppStorage("drill.snap") private var snap = true
     @AppStorage("drill.autoAB") private var autoAB = true
-    // 这三个默认开着：释义摆在眼前才知道这句话为什么这么说，
-    // 高频增强让辅音听得清（本来就是拿来抠听力的）。不想要就在设置里关。
-    @AppStorage("drill.showDef") private var showDef = true         // 英文释义
-    @AppStorage("drill.showDcn") private var showDcn = true         // 中文释义
+    // 精听就该先听声音，不是先看字。四个都默认关着，要看哪样自己点"显示"里勾。
+    // 用新的键名（show2.*）是故意的：老键上已经存了旧默认值，不换名新默认到不了手机上。
+    @AppStorage("show2.en")  private var showEn = false             // 原文
+    @AppStorage("show2.cn")  private var showCn = false             // 译文
+    @AppStorage("show2.dfe") private var showDef = false            // 英文释义
+    @AppStorage("show2.dcn") private var showDcn = false            // 中文释义
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
     @AppStorage("drill.boostHF") private var boostHF = true         // 听辅音（高频增强）
@@ -43,7 +45,6 @@ struct DrillScreen: View {
     /// 四档之外的那个"自定"：想要 0.85、1.25 这种随手加一个，不用动前面四档
     @AppStorage("drill.customRate") private var customRate = 0.0
 
-    @State private var showText = true
     @State private var showWalk = false
     @State private var showMore = false
     @State private var showStyle = false
@@ -71,7 +72,7 @@ struct DrillScreen: View {
                                         set: { if !$0 { editRate = nil } })) { rateSheet }
             .sheet(isPresented: $showList) {
                 SentenceListSheet(onPick: { i in
-                    player.pause(); store.index = i; rec.reset(); showText = true; flash = nil
+                    player.pause(); store.index = i; rec.reset(); flash = nil
                 })
             }
         }
@@ -117,7 +118,6 @@ struct DrillScreen: View {
                          onEnd: { autoAdvance(after: s.src) })
             player.boostHF = boostHF
             rec.reset()
-            showText = true
             flash = nil
             wireVolumeKeys()
             wireNowPlaying(s)
@@ -146,23 +146,25 @@ struct DrillScreen: View {
     /// 所有控件收成**一条**横排 —— 横屏宽度够，不必再分两行。
     /// 小句那一排在横屏收起来（竖屏有），换来的高度全给波形。
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
-        // 高度是横屏唯一稀缺的东西（11 Pro Max 横屏只有 ~393）。
-        // 各块的**最小**高度加起来必须留得下：顶栏 34 + 波形 120 + 选区条 36
-        // + 原文 60 + 控制条 36 + 打分 40 ＋ 间距 20 ≈ 346，剩下的全归波形。
-        // 写死一个大 minHeight 会让顶栏被挤出屏幕、打分行被标签栏压住（第一版就是）。
+        // 高度是横屏唯一稀缺的东西：11 Pro Max 横屏 414，减去标签栏和home条只剩约 344。
+        // 固定部分：顶栏 34 + 选区条 28 + 控制条 36 + 打分 38 + 间距 16 ＝ 152，
+        // 剩下的 190 全归波形（文字默认不显示，勾了才占位）。
+        // 别给波形写死大 minHeight，总和一超就是顶栏被切掉半截（1.jpg 那样）。
         VStack(spacing: 4) {
             header
             waveBlock                                   // 横屏的主角：弹性件，剩多少占多少
-                .frame(minHeight: 120, maxHeight: .infinity)
+                .frame(minHeight: 110, maxHeight: .infinity)
                 .padding(.horizontal, T.side)
-            selectionBar
-            sentenceCard(s)
-                .frame(height: min(max(60, cardHeight), geo.size.height * 0.24))
-                .padding(.horizontal, T.side)
-                .contentShape(Rectangle())
-                .simultaneousGesture(swipeToStep)
+            selectionBar(28)
+            if anyText {                                // 一样都没勾就整块不出现
+                sentenceCard(s)
+                    .frame(height: min(cardHeight, geo.size.height * 0.3))
+                    .padding(.horizontal, T.side)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(swipeToStep)
+            }
             landscapeBar
-            gradeRow(40)
+            gradeRow(38)
         }
         .padding(.bottom, 2)
         .overlay {
@@ -200,7 +202,7 @@ struct DrillScreen: View {
                 .transition(.move(edge: .bottom))
             }
         }
-        .padding(.top, 4)
+        .padding(.top, 2)
     }
 
     /// 横屏专用的那一条：句子列表、播放、整句、铺满、循环、间隔、录音、倍速，全在一行
@@ -228,24 +230,25 @@ struct DrillScreen: View {
             }
             .buttonStyle(.plain)
 
+            // 循环是最常用的，紧挨着播放键
+            LoopButton(player: player, times: loopTimes,
+                       onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
+                       onHold: { showLoop = true })
+
             Button {
                 vm.setSelection(a: nil, b: nil, play: false)
                 vm.zoomAll()
                 player.claim(loop: player.loop, times: loopTimes, segment: nil,
                              onEnd: { autoAdvance(after: store.current?.src ?? "") })
                 player.play(from: 0)
-            } label: { Label("整句", systemImage: "rectangle.dashed") }
+            } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
             .buttonStyle(LabelButton(on: vm.selection == nil))
 
             Button { vm.zoomToSelection() } label: {
-                Label("铺满", systemImage: "arrow.left.and.right")
+                Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
             }
             .buttonStyle(LabelButton())
             .disabled(vm.selection == nil).opacity(vm.selection == nil ? 0.35 : 1)
-
-            LoopButton(player: player, times: loopTimes,
-                       onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
-                       onHold: { showLoop = true })
 
             Button { showGap = true } label: {
                 HStack(spacing: 3) {
@@ -268,6 +271,8 @@ struct DrillScreen: View {
                     .foregroundStyle(rec.isRecording ? Color.red : Color.primary.opacity(0.55))
             }
             .buttonStyle(IconButton())
+
+            showMenu
 
             ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
                 rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001,
@@ -303,9 +308,11 @@ struct DrillScreen: View {
                     VStack(spacing: 8) {
                         selectionBar
                         // 原文卡固定高度（切句不跳），句子长了在卡片里自己滚，不会被截断
-                        sentenceCard(s)
-                            .frame(height: cardHeight)
-                            .padding(.horizontal, T.side)
+                        if anyText {
+                            sentenceCard(s)
+                                .frame(height: cardHeight)
+                                .padding(.horizontal, T.side)
+                        }
                         if !vm.chunks.isEmpty {
                             ScrollView { chunkRow }
                                 .frame(height: chunkHeight)
@@ -402,8 +409,6 @@ struct DrillScreen: View {
             Menu {
                 Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
                 Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
-                Toggle("显示英文释义", isOn: $showDef)
-                Toggle("显示中文释义", isOn: $showDcn)
                 Toggle("听辅音（更清楚）", isOn: $boostHF)
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -440,11 +445,13 @@ struct DrillScreen: View {
     /// 放不下就横向滚，绝不撑宽整屏
     /// 选区微调：A 和 B 各自成组（−／设／＋），右边两个图标管整句和放满。
     /// 八个一模一样的胶囊排一排像调试面板，分了组才看得出这是"两端各调各的"。
-    private var selectionBar: some View {
+    private var selectionBar: some View { selectionBar(36) }
+    /// 横屏高度金贵，这排压到 28，省下的全给波形
+    private func selectionBar(_ h: CGFloat) -> some View {
         HStack(spacing: T.gap) {
-            edgeGroup("A", minus: { vm.nudge("a", -0.08) },
+            edgeGroup("A", h, minus: { vm.nudge("a", -0.08) },
                       set: { vm.setEdgeAtHead("a") }, plus: { vm.nudge("a", 0.08) })
-            edgeGroup("B", minus: { vm.nudge("b", -0.08) },
+            edgeGroup("B", h, minus: { vm.nudge("b", -0.08) },
                       set: { vm.setEdgeAtHead("b") }, plus: { vm.nudge("b", 0.08) })
             Spacer(minLength: 0)
             // 收藏和难点跟"这一句/这段选区"绑在一起，放选区这排比放播放排顺；
@@ -461,16 +468,17 @@ struct DrillScreen: View {
             }
         }
         .padding(.horizontal, T.side)
-        .frame(height: 36)
+        .frame(height: h)
     }
-    private func edgeGroup(_ name: String, minus: @escaping () -> Void,
+    private func edgeGroup(_ name: String, _ h: CGFloat = 36, minus: @escaping () -> Void,
                            set: @escaping () -> Void, plus: @escaping () -> Void) -> some View {
-        HStack(spacing: 0) {
-            Button(action: minus) { Image(systemName: "minus").frame(width: 30, height: 32) }
+        let bh = h - 4
+        return HStack(spacing: 0) {
+            Button(action: minus) { Image(systemName: "minus").frame(width: 30, height: bh) }
             Button(action: set) {
-                Text(name).font(.system(size: 13, weight: .medium)).frame(width: 26, height: 32)
+                Text(name).font(.system(size: 13, weight: .medium)).frame(width: 26, height: bh)
             }
-            Button(action: plus) { Image(systemName: "plus").frame(width: 30, height: 32) }
+            Button(action: plus) { Image(systemName: "plus").frame(width: 30, height: bh) }
         }
         .font(.system(size: 12))
         .foregroundStyle(Color.primary.opacity(0.75))
@@ -496,6 +504,32 @@ struct DrillScreen: View {
     private var nearestRate: Double {
         rates.min(by: { abs($0 - Double(player.rate)) < abs($1 - Double(player.rate)) }) ?? 1.0
     }
+    /// 显示什么：原文/译文/中文释义/英文释义各自开关，默认一个都不显示。
+    /// 精听的规矩是先听声音，字是听不出来时才翻的答案。
+    private var showMenu: some View {
+        Menu {
+            Toggle("原文", isOn: $showEn)
+            Toggle("译文", isOn: $showCn)
+            Toggle("中文释义", isOn: $showDcn)
+            Toggle("英文释义", isOn: $showDef)
+            Divider()
+            Button(anyText ? "全部隐藏（只听声音）" : "全部显示") {
+                let on = !anyText
+                showEn = on; showCn = on; showDcn = on; showDef = on
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: anyText ? "eye" : "eye.slash").font(.system(size: 13))
+                Text("显示").font(.system(size: 13, weight: .medium))
+            }
+            .fixedSize()
+            .foregroundStyle(anyText ? Color.accentColor : Color.primary.opacity(0.7))
+            .padding(.horizontal, 9).frame(height: 34)
+            .background(anyText ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+        }
+    }
+
     private func rateChip(_ label: String, on: Bool,
                           tap: @escaping () -> Void, hold: @escaping () -> Void) -> some View {
         Text(label)
@@ -519,8 +553,13 @@ struct DrillScreen: View {
 
     private var chunkHeight: CGFloat { 84 }
     /// 只跟字号有关，跟句子长短无关：短句不塌、长句在卡内滚，切句时纹丝不动
+    /// 勾了几样才占多高；一样都没勾就是 0（卡片整个不出现，空间全给波形）
+    private var anyText: Bool { showEn || showCn || showDef || showDcn }
     private var cardHeight: CGFloat {
-        CGFloat(sentFont) * 2.9 + CGFloat(cnFont) * 1.7 + 24
+        guard anyText else { return 0 }
+        return 20
+            + (showEn  ? CGFloat(sentFont) * 2.9 : 0)
+            + (showCn  ? CGFloat(cnFont) * 1.7 : 0)
             + (showDef ? CGFloat(cnFont) * 1.5 : 0)
             + (showDcn ? CGFloat(cnFont) * 1.5 : 0)
     }
@@ -528,19 +567,16 @@ struct DrillScreen: View {
     private func sentenceCard(_ s: Api.Sentence) -> some View {
         ScrollView {                       // 长句子在卡片内部滚，不挤别人也不被截
         VStack(alignment: .leading, spacing: 6) {
-            // 播到哪个词，哪个词亮 —— 跟电脑版一样的浅黄底
-            Text(highlighted(s.en))
-                .font(face(sentFace, sentFont))
-                .blur(radius: showText ? 0 : 9)
-                .animation(.easeInOut(duration: 0.16), value: showText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { showText.toggle() }
-            if let cn = s.cn, !cn.isEmpty {
+            if showEn {
+                // 播到哪个词，哪个词亮 —— 跟电脑版一样的浅黄底
+                Text(highlighted(s.en))
+                    .font(face(sentFace, sentFont))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if showCn, let cn = s.cn, !cn.isEmpty {
                 Text(cn)
                     .font(face(cnFace, cnFont))
                     .foregroundStyle(color(cnColor) ?? Color.secondary)
-                    .blur(radius: showText ? 0 : 9)
             }
             if showDef, let d = s.dfe, !d.isEmpty {
                 Text(d).font(.system(size: max(11, cnFont - 3))).foregroundStyle(.tertiary)
@@ -687,12 +723,12 @@ struct DrillScreen: View {
                                  onEnd: { autoAdvance(after: store.current?.src ?? "") })
                     player.play(from: 0)
                 } label: {
-                    Label("整句", systemImage: "rectangle.dashed")
+                    Label("整句", systemImage: "rectangle.dashed").fixedSize()
                 }
                 .buttonStyle(LabelButton(on: vm.selection == nil))
 
                 Button { vm.zoomToSelection() } label: {
-                    Label("铺满", systemImage: "arrow.left.and.right")
+                    Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
                 }
                 .buttonStyle(LabelButton())
                 .disabled(vm.selection == nil)
@@ -896,7 +932,11 @@ struct DrillScreen: View {
                     Text("把 2.5kHz 以上抬高一点，句尾的 t/s/k 这些辅音会清楚很多，专抠连读用。")
                 }
                 Section("跟读") { Toggle("录完自动对比播放", isOn: $autoAB) }
-                Section("显示") { Toggle("显示英文释义", isOn: $showDef) }
+                Section("显示") {
+                    Text("原文、译文、中英文释义都在底部那个「显示」里勾 —— "
+                         + "默认一个都不显示，先听声音，听不出来再翻答案。")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                }
                 Section {
                     Text("波形：单指拖＝平移，双指捏＝缩放，点一下＝把最近的边界挪过来，"
                          + "长按拖＝画新选区，拖两端圆点＝改边界。")
