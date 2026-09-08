@@ -44,6 +44,7 @@ struct ReviewScreen: View {
                             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
 
                         VStack(spacing: 14) {
+                            Spacer(minLength: 0)
                             Text((c.reps ?? 0) > 0 ? "复习 · 练过 \(c.reps ?? 0) 次" : "新句子")
                                 .font(.caption2).foregroundStyle(.secondary)
                             if shown {
@@ -62,15 +63,23 @@ struct ReviewScreen: View {
                                         .multilineTextAlignment(.center)
                                 }
                             } else {
+                                // 盲听：卡片是空的，得让它看着"就是要空"，而不是界面坏了
+                                Image(systemName: "ear")
+                                    .font(.system(size: 34, weight: .light))
+                                    .foregroundStyle(.tertiary)
                                 Text("先听，别看字")
                                     .font(.system(size: 17)).foregroundStyle(.secondary)
-                                    .padding(.vertical, 26)
+                                Text("听懂了再点下面「显示原文」对答案")
+                                    .font(.caption).foregroundStyle(.tertiary)
                             }
+                            Spacer(minLength: 0)
                         }
-                        .frame(maxWidth: .infinity)
-                        .card(TX.color(cardBg))
-
-                        Spacer(minLength: 8)      // 控件一律沉到下半屏（单手够得到）
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)   // 卡片撑满上半屏，
+                        .card(TX.color(cardBg))                             // 控件自然被推到下半屏
+                        .overlay(                                           // 浅色背景下卡片要看得见边
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
 
                         HStack(spacing: 14) {
                             Button { player.isPlaying ? player.pause() : replay() } label: {
