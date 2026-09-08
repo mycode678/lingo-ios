@@ -194,7 +194,7 @@ final class WaveUIView: UIView {
                                     height: rowH - 4))
                 }
                 // 词与词之间一条极淡的分隔线，够看出边界就行
-                ctx.setStrokeColor(C.grid.cgColor); ctx.setLineWidth(1)
+                ctx.setStrokeColor(C.rulerTick.cgColor); ctx.setLineWidth(1)
                 ctx.move(to: CGPoint(x: a + 0.5, y: 2)); ctx.addLine(to: CGPoint(x: a + 0.5, y: laneBot))
                 ctx.strokePath()
                 let attrs: [NSAttributedString.Key: Any] = [
@@ -231,7 +231,7 @@ final class WaveUIView: UIView {
         if hasMe {
             ctx.setFillColor(C.bgMe.cgColor)
             ctx.fill(CGRect(x: 0, y: meTop, width: W, height: meH))
-            ctx.setStrokeColor(C.grid.cgColor); ctx.setLineWidth(1)
+            ctx.setStrokeColor(C.rulerTick.cgColor); ctx.setLineWidth(1)
             ctx.move(to: CGPoint(x: 0, y: meTop + 0.5)); ctx.addLine(to: CGPoint(x: W, y: meTop + 0.5))
             ctx.strokePath()
             let mid = meTop + meH / 2
