@@ -274,11 +274,12 @@ struct DrillScreen: View {
     // 这样无论字号多大、显示几行、有没有小句，总高都不可能超过屏幕。
     // 另有 Audit（-demo -audit）在 CI 里把各种组合验一遍，重叠就 LAYOUT-FAIL。
 
-    private struct Metrics {
-        var header: CGFloat, sel: CGFloat, chunks: CGFloat, strip: CGFloat
-        var grade: CGFloat, gap: CGFloat
-        var fixed: CGFloat { header + sel + chunks + strip + grade + gap }
-    }
+    // 不再自己算"固定部分一共多高"——上一版就是因为常数估小了 10 点，
+    // 结果顶栏被顶出屏幕 5 点、控制条掉出去 5 点（体检抓到的）。
+    // 现在的规矩更简单也更不会错：
+    //   除波形外，所有块都按自己的自然高度；
+    //   **波形是唯一的弹性件**（最少 60，其余全给它），系统会自动把多的部分从它身上挤掉；
+    //   原文卡有上限（屏高的 35%），保证它不会挤到别人头上。
 
     /// 原文卡"想要"多高（按整行算，勾了几样算几样）
     private var cardIdeal: CGFloat {
@@ -291,30 +292,27 @@ struct DrillScreen: View {
         return v
     }
 
-    /// 波形和原文卡怎么分剩下的高度：卡片最多拿 55%，波形至少留 90
-    private func split(_ total: CGFloat, _ m: Metrics) -> (wave: CGFloat, card: CGFloat) {
-        let free = max(120, total - m.fixed)
-        guard anyText else { return (free, 0) }
-        let card = min(cardIdeal, free * 0.55)
-        return (max(90, free - card), card)
+    /// 原文卡实际多高：想要多少给多少，但不许超过屏幕的 35%
+    private func cardH(_ total: CGFloat) -> CGFloat {
+        anyText ? min(cardIdeal, total * 0.35) : 0
     }
 
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         // 这些常数都是体检（-audit）量出来的实际值，不是拍脑袋估的：
         // 顶栏内部写死 38；横屏控制条 44、打分 38＋6 内边距＝44。
-        let m = Metrics(header: 38, sel: 30, chunks: vm.chunks.isEmpty ? 0 : 44,
-                        strip: 44, grade: 44, gap: 26)
-        let hs = split(geo.size.height, m)
+        let cardHeight = cardH(geo.size.height)
         return VStack(spacing: 4) {
             // 上半截单独一层：跟读结果只浮在这一截上，不许盖住下面的控制条，
             // 也不许盖满波形（盖住就没法圈选区）。
             VStack(spacing: 4) {
                 header.auditBlock("顶栏")
-                waveBlock.frame(height: hs.wave).padding(.horizontal, T.side).auditBlock("波形")
+                waveBlock                                   // 唯一的弹性件
+                    .frame(minHeight: 60, maxHeight: .infinity)
+                    .padding(.horizontal, T.side).auditBlock("波形")
                 VStack(spacing: 4) {
-                    selectionBar(m.sel).auditBlock("选区条")
-                    if hs.card > 0 {
-                        sentenceCard(s).frame(height: hs.card)
+                    selectionBar(30).auditBlock("选区条")
+                    if cardHeight > 0 {
+                        sentenceCard(s).frame(height: cardHeight)
                             .padding(.horizontal, T.side).auditBlock("原文")
                     }
                     Spacer(minLength: 0)
@@ -334,7 +332,7 @@ struct DrillScreen: View {
             // 小句固定在底下这组的正上方，位置不随文字多少变
             if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
             controlStrip.auditBlock("控制条")
-            gradeRow(m.grade).auditBlock("打分")
+            gradeRow(38).auditBlock("打分")
         }
         // 宽度交给父视图（.infinity＝给我多少用多少）。
         // 千万别写死 geo.size.width：横屏那是含刘海区的整屏宽，比安全区宽 88 点，
@@ -355,18 +353,18 @@ struct DrillScreen: View {
 
     private func portrait(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         // 同上，实测：控制条 44＋上下内边距＝58，打分 48＋6＝54＋行距＝60
-        let m = Metrics(header: 38, sel: 36, chunks: vm.chunks.isEmpty ? 0 : 44,
-                        strip: 58, grade: 60, gap: 26)
-        let hs = split(geo.size.height, m)
+        let cardHeight = cardH(geo.size.height)
         return VStack(spacing: 0) {
             header.auditBlock("顶栏")
             VStack(spacing: 8) {
-                waveBlock.frame(height: hs.wave).padding(.horizontal, T.side).auditBlock("波形")
+                waveBlock                                   // 唯一的弹性件
+                    .frame(minHeight: 60, maxHeight: .infinity)
+                    .padding(.horizontal, T.side).auditBlock("波形")
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
-                    selectionBar(m.sel).auditBlock("选区条")
-                    if hs.card > 0 {
-                        sentenceCard(s).frame(height: hs.card)
+                    selectionBar.auditBlock("选区条")
+                    if cardHeight > 0 {
+                        sentenceCard(s).frame(height: cardHeight)
                             .padding(.horizontal, T.side).auditBlock("原文")
                     }
                     Spacer(minLength: 0)
@@ -388,7 +386,7 @@ struct DrillScreen: View {
             }
             // 小句固定在最底下这组的正上方 —— 位置永远不随文字多少变，闭着眼也能点
             if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
-            gradeRow(m.grade).auditBlock("打分")
+            gradeRow.auditBlock("打分")
             transport.auditBlock("控制条")
         }
         .frame(maxWidth: .infinity)
