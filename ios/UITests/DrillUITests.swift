@@ -77,6 +77,41 @@ final class DrillUITests: XCTestCase {
                       "在波形上长按拖动没有画出选区")
     }
 
+    /// 录完之后：结果面板要自己弹出来，控制条上要出现"对比"。
+    /// （他反馈过"录音后的对比按钮一直没有"，这条就是钉住它。）
+    func testTakePanelAndCompareButton() {
+        let app = launch(["-take"])          // -take＝假装刚录完一条
+        XCTAssertTrue(app.buttons["对比"].waitForExistence(timeout: 10),
+                      "录完了但控制条上没有「对比」；" + dump(app))
+        XCTAssertTrue(app.buttons["我的"].exists, "结果面板里没有「我的」")
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '词准'")).firstMatch.exists,
+            "结果面板里没有分项得分")
+    }
+
+    /// 小句那一条必须在"没听懂"上面，且不许压住它
+    func testChunkStripSitsAboveGradeRow() {
+        let app = launch()
+        let chunk = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Excuse me can you tell'")).firstMatch
+        XCTAssertTrue(chunk.waitForExistence(timeout: 10), "找不到小句；" + dump(app))
+        let grade = app.buttons["没听懂"]
+        XCTAssertTrue(grade.exists, "找不到打分行")
+        XCTAssertLessThanOrEqual(chunk.frame.maxY, grade.frame.minY + 1,
+                                 "小句压住了「没听懂」那一行")
+    }
+
+    /// "显示"里全关时不该出现原文；勾上原文就该出现
+    func testShowMenuTogglesSentence() {
+        let app = launch()
+        let sentence = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS 'Excuse me, can you tell'")).firstMatch
+        XCTAssertFalse(sentence.exists, "默认应该什么文字都不显示（先听声音）")
+        app.buttons["显示"].tap()
+        app.buttons["原文"].tap()
+        XCTAssertTrue(sentence.waitForExistence(timeout: 3), "勾了原文却没显示出来")
+    }
+
     /// 左右滑切句：滑一下，标题里的"第几句"必须变
     func testSwipeChangesSentence() {
         let app = launch()
