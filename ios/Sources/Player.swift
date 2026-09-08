@@ -75,7 +75,8 @@ final class Player: ObservableObject {
     /// 把一条音频读进内存。src 是服务器上的路径（/res/exa/...），先看本地缓存。
     func load(src: String) async throws {
         if Demo.on {                       // 云端模拟器里没有服务器，用合成的波形
-            let idx = Int(src.filter(\.isNumber)) ?? 1
+            // 注意别把 "mp3" 里的 3 也算进来（第一版就是这么把第 1 句放成了第 3 句）
+            let idx = Int(src.split(separator: "/").last?.split(separator: ".").first ?? "1") ?? 1
             let pcm = Demo.pcm(idx - 1, sampleRate: fmt.sampleRate)
             guard let b = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(pcm.count)),
                   let ch = b.floatChannelData else { return }

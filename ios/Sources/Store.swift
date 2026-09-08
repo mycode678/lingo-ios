@@ -105,7 +105,7 @@ final class DrillModel: ObservableObject {
         if Demo.on {
             try? await Player.shared.load(src: s.src)
             view = (0, Player.shared.duration)
-            let i = Int(s.src.filter(\.isNumber)) ?? 1
+            let i = Int(s.src.split(separator: "/").last?.split(separator: ".").first ?? "1") ?? 1
             words = Demo.words[min(max(0, i - 1), Demo.words.count - 1)]
             chunks = Self.cutChunks(words)
             marks = []
