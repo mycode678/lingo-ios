@@ -22,6 +22,25 @@ struct LingoApp: App {
 
     var body: some Scene {
         WindowGroup {
+            rootView
+        }
+    }
+
+    @ViewBuilder private var rootView: some View {
+        if Demo.land {
+            GeometryReader { g in                 // 截横屏专用：按横屏尺寸渲染再转 90 度
+                root
+                    .frame(width: g.size.height, height: g.size.width)
+                    .rotationEffect(.degrees(90))
+                    .position(x: g.size.width / 2, y: g.size.height / 2)
+            }
+            .ignoresSafeArea()
+        } else {
+            root
+        }
+    }
+
+    private var root: some View {
             TabView(selection: $nav.tab) {
                 DictScreen().tabItem { Label("查词", systemImage: "magnifyingglass") }.tag(0)
                 DrillScreen().tabItem { Label("精听", systemImage: "waveform") }.tag(1)
@@ -49,7 +68,6 @@ struct LingoApp: App {
                 await store.loadHist()
             }
             .onOpenURL { _ in }
-        }
     }
 }
 

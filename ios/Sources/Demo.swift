@@ -16,6 +16,9 @@ enum Demo {
     static let word = "excuse"
     /// -select 1 时预先圈一段，方便截图看"有选区"的样子
     static var preselect: Bool { ProcessInfo.processInfo.arguments.contains("-select") }
+    /// 模拟器转不了屏，截横屏只能这么来：按横屏的宽高渲染，再整体转 90 度。
+    /// 布局算的是"宽比高大就走横屏那套"，这样验出来的尺寸跟真机横屏一致。
+    static var land: Bool { ProcessInfo.processInfo.arguments.contains("-land") }
     /// 抽屉里的东西光靠主屏截不到：-sheet list|gap|rate 启动就把对应面板打开
     static var sheet: String? {
         let a = ProcessInfo.processInfo.arguments
