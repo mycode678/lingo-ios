@@ -132,7 +132,8 @@ final class DrillModel: ObservableObject {
             if let sv = saved, sv.upperBound <= Player.shared.duration + 0.01 {
                 selection = sv
                 Player.shared.setSegment(sv, playNow: false)
-                note = "沿用上次圈的那一段"
+                // 不用写"沿用上次圈的那一段"：选区就画在波形上，一眼看得见，
+                // 多这一行字反而占地方（横屏尤其）
             }
             } catch {
                 // 出了问题要说清是哪一步，不然只能靠猜（第一版就吃了这个亏）

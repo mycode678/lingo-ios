@@ -90,7 +90,10 @@ struct DrillScreen: View {
         GeometryReader { geo in
             Group {
                 if geo.size.width > geo.size.height {
-                    landscape(s, geo)          // 横屏：波形和原文放大，控件收成一条
+                    // 横屏＝沉浸模式：连标签栏一起藏掉，那条白带（标签栏＋home 条
+                    // 差不多 50 点）全归波形。要换页转回竖屏，或用右上角"⋯"里的跳转。
+                    landscape(s, geo)
+                        .toolbar(.hidden, for: .tabBar)
                 } else {
                     portrait(s, geo)
                 }
@@ -200,15 +203,11 @@ struct DrillScreen: View {
     /// 顺序＝用得最多的靠左（拇指落点），铺满在选区条上。
     private var landscapeBar: some View {
         HStack(spacing: 6) {
+            // 只留图标：第几句顶栏已经写着了，这儿再写一遍纯属重复
             Button { showList = true } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "list.bullet").font(.system(size: 12))
-                    Text("\(store.index + 1)/\(store.items.count)")
-                        .font(.system(size: 13, weight: .medium)).monospacedDigit()
-                }
-                .fixedSize()
+                Image(systemName: "list.bullet").font(.system(size: 15))
                 .foregroundStyle(Color.primary.opacity(0.75))
-                .padding(.horizontal, 9).frame(height: 36)
+                .frame(width: 40, height: 36)
                 .background(Color.primary.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
             }
@@ -369,6 +368,11 @@ struct DrillScreen: View {
             Menu {
                 Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
                 Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
+                Divider()
+                // 横屏把标签栏藏了，这里给条路回去
+                Button { Nav.shared.tab = 0 } label: { Label("去查词", systemImage: "magnifyingglass") }
+                Button { Nav.shared.tab = 2 } label: { Label("去复习", systemImage: "arrow.triangle.2.circlepath") }
+                Button { Nav.shared.tab = 3 } label: { Label("我的库", systemImage: "books.vertical") }
                 Toggle("听辅音（更清楚）", isOn: $boostHF)
             } label: {
                 Image(systemName: "ellipsis.circle")
