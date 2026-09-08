@@ -17,6 +17,7 @@ final class Store: ObservableObject {
     @Published var error: String?
     @Published var hist: [Api.HistWord] = []
     @Published var dueCount = 0
+    @Published var related: [String] = []          // 含这个词的其它词条
 
     var current: Api.Sentence? { items.indices.contains(index) ? items[index] : nil }
 
@@ -25,6 +26,8 @@ final class Store: ObservableObject {
         guard !w.isEmpty else { return }
         if Demo.on {
             word = Demo.word; items = Demo.sentences; prog = [:]; inLib = true
+            related = ["excuse me", "excuse yourself", "a poor excuse for something",
+                       "make your excuses", "pardon/excuse my French"]
             entryHTML = "<div class=\"entry\"><span class=\"pos\">verb</span> "
                       + "<span class=\"sensenum\">1</span> "
                       + "<span class=\"def\">used when you want to get someone's attention politely</span>"
@@ -45,6 +48,7 @@ final class Store: ObservableObject {
             inLib = sent.inlib ?? false
             index = items.firstIndex { $0.kind == "sent" } ?? 0
             await Api.histAdd(word)
+            Task { related = (try? await Api.related(word)) ?? [] }
             Task { hist = (try? await Api.hist()) ?? hist }
             // 出门前用得上：把这个词的音频悄悄下到本地
             Task.detached { await Cache.shared.prefetch(sent.items.map(\.src)) }

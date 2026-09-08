@@ -161,6 +161,11 @@ enum Api {
     static func addWord(_ w: String) async throws {
         _ = try await post("/api/word", ["w": w, "on": true], as: OK.self)
     }
+    /// 含这个词的其它词条（短语、派生词），查词页上给一排快捷入口
+    static func related(_ q: String) async throws -> [String] {
+        struct R: Codable { var words: [String] }
+        return try await get("/api/related?q=" + esc(q) + "&limit=30", as: R.self).words
+    }
     static func lib() async throws -> LibResp { try await get("/api/lib", as: LibResp.self) }
     static func heat() async throws -> [Int: Int] {
         struct R: Codable { var days: [String: Int] }
