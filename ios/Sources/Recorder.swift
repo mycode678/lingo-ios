@@ -23,6 +23,22 @@ final class Recorder: NSObject, ObservableObject {
     /// 刚录的那一条（16k 单声道），画在波形下面跟原声对齐着看
     @Published private(set) var takePCM: [Float] = []
 
+    /// 只给截图用：假装刚录完一条，好把"跟读结果"那块渲染出来自查。
+    /// 真机上永远走不到（Demo.on 只有 -demo 启动才是 true）。
+    func demoTake() {
+        guard Demo.on else { return }
+        heard = "Excuse me can you tell me the way to the museum please"
+        heardAttributed = AttributedString(heard!)
+        wrongWords = ["museum"]
+        score = Score(words: 88, tone: 76, rhythm: 81)
+        message = "听写来自本机识别，只作参考"
+        let n = 60
+        curve = (nat: (0..<n).map { 120 + 40 * sin(Double($0) / 6) },
+                 mine: (0..<n).map { 118 + 46 * sin(Double($0) / 5.4) },
+                 rms: (0..<n).map { abs(sin(Double($0) / 4)) })
+        hasTake = true
+    }
+
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
     private var fileURL: URL {

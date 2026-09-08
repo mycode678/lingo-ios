@@ -65,6 +65,9 @@ jobs:
           # 横屏（按横屏尺寸渲染再转 90 度，看的时候用 ffmpeg 转回来）
           shoot "iPhone 15 Pro Max" "drill" light "-land"
           shoot "iPhone 15 Pro Max" "drill" dark "-land"
+          # 跟读结果那块（竖屏 + 横屏）
+          shoot "iPhone 15 Pro Max" "drill" light "-take"
+          shoot "iPhone 15 Pro Max" "drill" light "-land -take"
           ls -la shots
 
       - uses: actions/upload-artifact@v4

@@ -122,6 +122,7 @@ struct DrillScreen: View {
             flash = nil
             wireVolumeKeys()
             wireNowPlaying(s)
+            if Demo.on && Demo.take { rec.demoTake() }      // 截图用：假装刚录完
             // 截图用：-sheet list|gap|rate 启动就把对应面板打开（抽屉里的布局也要验）
             if Demo.on, let sh = Demo.sheet {
                 switch sh {
