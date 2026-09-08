@@ -45,40 +45,39 @@ struct ReviewScreen: View {
                         .frame(maxWidth: .infinity)
                         .card()
 
-                        HStack(spacing: 10) {
+                        HStack(spacing: 14) {
                             Button { player.isPlaying ? player.pause() : replay() } label: {
-                                Label(player.isPlaying ? "暂停" : "再听一遍",
-                                      systemImage: player.isPlaying ? "pause.fill" : "play.circle.fill")
-                                    .font(.system(size: 17, weight: .medium))
-                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 24))
+                                    .frame(width: 64, height: 64)
+                                    .background(Color.accentColor).foregroundStyle(.white)
+                                    .clipShape(Circle())
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.plain)
                             Button { player.loop.toggle(); if player.loop { replay() } } label: {
-                                Image(systemName: "repeat").frame(width: 54, height: 52)
+                                Image(systemName: "repeat")
                             }
-                            .prominent(player.loop)
+                            .buttonStyle(IconButton(on: player.loop))
+                            Button { toDrill(card!) } label: { Image(systemName: "waveform") }
+                                .buttonStyle(IconButton())
+                            Button { next() } label: { Image(systemName: "forward.end") }
+                                .buttonStyle(IconButton())
                         }
 
                         if shown {
-                            HStack(spacing: 8) {
+                            HStack(spacing: T.gap) {
                                 gradeButton(1, "没听懂", .red)
                                 gradeButton(2, "勉强", .orange)
                                 gradeButton(3, "会了", .blue)
                                 gradeButton(4, "脱口而出", .green)
                             }
                         } else {
-                            Button("显示原文") { withAnimation { shown = true } }
-                                .font(.system(size: 16))
-                                .frame(maxWidth: .infinity, minHeight: 50)
-                                .buttonStyle(.bordered)
+                            Button { withAnimation { shown = true } } label: {
+                                Text("显示原文").font(.system(size: 16))
+                                    .frame(maxWidth: .infinity, minHeight: 48)
+                            }
+                            .buttonStyle(QuietButton(wide: true))
                         }
-
-                        HStack {
-                            Button("跳过") { next() }
-                            Spacer()
-                            Button("拿去精听") { toDrill(c) }
-                        }
-                        .font(.system(size: 14))
 
                         if let t = toast {
                             Text(t).font(.caption).foregroundStyle(.secondary)
@@ -118,9 +117,12 @@ struct ReviewScreen: View {
                 next()
             }
         } label: {
-            Text(t).font(.system(size: 14)).frame(maxWidth: .infinity, minHeight: 50)
-                .background(c.opacity(0.15)).foregroundStyle(c)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text(t).font(.system(size: 13.5)).lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .foregroundStyle(c).background(c.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: T.ctl, style: .continuous)
+                    .stroke(c.opacity(0.28), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
         }
         .buttonStyle(.plain)
     }

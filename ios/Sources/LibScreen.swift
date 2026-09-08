@@ -89,8 +89,8 @@ struct LibScreen: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
     }
 
     private func load() async {
