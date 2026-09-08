@@ -1018,7 +1018,6 @@ struct DrillScreen: View {
         guard i != store.index else { return }
         player.pause()
         store.index = i
-        showText = true
         rec.reset()
         // 切句不给任何反馈（不震动、不弹字）：手势大家早就用熟了，反馈反而打扰
     }
