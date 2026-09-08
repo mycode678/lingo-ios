@@ -39,6 +39,7 @@ struct DrillScreen: View {
     @State private var showWalk = false
     @State private var showMore = false
     @State private var showStyle = false
+    @State private var showList = false
     @State private var flash: String?
 
     var body: some View {
@@ -50,6 +51,11 @@ struct DrillScreen: View {
             .sheet(isPresented: $showWalk) { WalkScreen(startSegment: vm.selection) }
             .sheet(isPresented: $showMore) { settingsSheet }
             .sheet(isPresented: $showStyle) { styleSheet }
+            .sheet(isPresented: $showList) {
+                SentenceListSheet(onPick: { i in
+                    player.pause(); store.index = i; rec.reset(); showText = true; flash = nil
+                })
+            }
         }
     }
 
@@ -137,6 +143,7 @@ struct DrillScreen: View {
             if vm.loading { ProgressView().controlSize(.mini) }
             Spacer(minLength: 4)
             iconButton(volKeys ? "volume.2.fill" : "volume.slash", on: volKeys) { volKeys.toggle() }
+            iconButton("list.bullet") { showList = true }
             iconButton("textformat") { showStyle = true }
             iconButton("headphones") { showWalk = true }
             iconButton("slider.horizontal.3") { showMore = true }

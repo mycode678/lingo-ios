@@ -131,7 +131,7 @@ struct DictScreen: View {
     private var filtered: [(Int, Api.Sentence)] {
         Array(store.items.enumerated()).filter { _, s in
             let p = store.prog[s.src]
-            switch filter {
+            switch UserDefaults.standard.string(forKey: "list.filter") ?? "all" {
             case "fav":  return (p?.fav ?? 0) == 1
             case "new":  return (p?.reps ?? 0) == 0
             case "mark": return (p?.marks ?? 0) > 0
@@ -141,78 +141,13 @@ struct DictScreen: View {
         }
     }
 
+    /// 例句清单跟精听台共用一份组件
     private var sentenceList: some View {
-        NavigationStack {
-            List {
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach([("all","全部"),("fav","★ 收藏"),("new","没练过"),
-                                     ("mark","有难点"),("due","该复习")], id: \.0) { k, n in
-                                Button { filter = k } label: {
-                                    Text(n).font(.system(size: 12.5))
-                                        .padding(.horizontal, 11).padding(.vertical, 6)
-                                        .background(filter == k ? Color.accentColor : Color(.secondarySystemBackground))
-                                        .foregroundStyle(filter == k ? Color.white : Color.primary)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    HStack(spacing: 10) {
-                        Button {
-                            seqPlaying ? stopSequence() : playAll()
-                        } label: {
-                            Label(seqPlaying ? "停止连播" : "整条连播",
-                                  systemImage: seqPlaying ? "stop.fill" : "play.fill")
-                                .font(.system(size: 13))
-                        }
-                        .buttonStyle(.bordered)
-                        Spacer()
-                        Stepper("每句 \(rep) 遍", value: $rep, in: 1...10).font(.system(size: 12.5))
-                    }
-                }
-                ForEach(filtered, id: \.1.src) { idx, s in
-                    Section {
-                        Button {
-                            store.index = idx
-                            playOne(s)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 6) {
-                                    dot(for: s)
-                                    Text(s.en).font(.system(size: listFont))
-                                        .foregroundStyle(playingSrc == s.src ? Color.accentColor : .primary)
-                                }
-                                if let cn = s.cn, !cn.isEmpty {
-                                    Text(cn).font(.system(size: listFont - 2)).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing) {
-                            Button("精听") { store.index = idx; showList = false }.tint(.accentColor)
-                        }
-                    } header: {
-                        if idx == 0 || store.items[idx - 1].grp != s.grp {
-                            Text(s.gnum ?? s.grp ?? "").font(.caption)
-                        }
-                    }
-                }
-            }
-            .listStyle(.plain)
-            .navigationTitle("例句")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("收起") { showList = false } } }
-        }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func dot(for s: Api.Sentence) -> some View {
-        let p = store.prog[s.src]
-        let c: Color = (p?.state ?? 0) == 2 ? .green : ((p?.reps ?? 0) > 0 ? .orange : .gray.opacity(0.4))
-        return Circle().fill(c).frame(width: 8, height: 8)
+        SentenceListSheet(
+            onPick: { i in store.index = i; playOne(store.items[i]) },
+            playAll: { playAll() },
+            stopAll: { stopSequence() },
+            isPlayingAll: seqPlaying)
     }
 
     /// 点一句：按设定的遍数循环播它（PC 版那颗 ↻ 的手机版）
