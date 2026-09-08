@@ -167,15 +167,25 @@ struct DrillScreen: View {
                 waveBlock                               // 横屏的主角：弹性件，剩多少占多少
                     .frame(minHeight: 110, maxHeight: .infinity)
                     .padding(.horizontal, T.side)
-                selectionBar(28)
-                if !vm.chunks.isEmpty { chunkStrip }    // 小句：圈半秒反复听的入口
-                if anyText {                            // 一样都没勾就整块不出现
-                    sentenceCard(s)
-                        .frame(height: min(cardHeight, geo.size.height * 0.3))
-                        .padding(.horizontal, T.side)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(swipeToStep)
+                // 波形以下这一整片都能左右滑切句 —— 不管有没有显示文字。
+                // （原来手势只挂在原文卡上，文字一关就没地方可滑了。）
+                VStack(spacing: 4) {
+                    selectionBar(28)
+                    if !vm.chunks.isEmpty { chunkStrip }   // 小句：圈半秒反复听的入口
+                    if anyText {                           // 一样都没勾就整块不出现
+                        sentenceCard(s)
+                            .frame(height: min(cardHeight, geo.size.height * 0.3))
+                            .padding(.horizontal, T.side)
+                    }
                 }
+                .frame(minHeight: 76)
+                .contentShape(Rectangle())
+                .simultaneousGesture(swipeToStep)
+            }
+            .onAppear {
+                // 一转到横屏就把文字全收起来：横屏是拿来盯波形、抠发音的，
+                // 字在眼前就又变成"看着读"了。要看自己点底下那个"显示"。
+                showEn = false; showCn = false; showDef = false; showDcn = false
             }
             .overlay(alignment: .bottom) {
                 if rec.hasTake && showTake {
@@ -657,11 +667,11 @@ struct DrillScreen: View {
         return Button { vm.selectChunk(i) } label: {
             HStack(spacing: 5) {
                 Text(vm.words[c.0...c.1].map(\.w).joined(separator: " ")).lineLimit(1)
-                Text(String(format: "%.1f", b - a)).font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(String(format: "%.1f", b - a)).font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            .font(.system(size: 13.5))
+            .font(.system(size: 15.5))
             .foregroundStyle(on ? Color.accentColor : Color.primary.opacity(0.8))
-            .padding(.horizontal, 11).padding(.vertical, 9)
+            .padding(.horizontal, 12).padding(.vertical, 9)
             .background(on ? Color.accentColor.opacity(0.13) : Color.primary.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
         }
@@ -684,7 +694,7 @@ struct DrillScreen: View {
             }
             .padding(.horizontal, T.side)
         }
-        .frame(height: 40)
+        .frame(height: 44)
     }
 
     private var takeBlock: some View {
