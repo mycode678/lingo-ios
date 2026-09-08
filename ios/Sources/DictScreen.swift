@@ -238,7 +238,7 @@ struct EntryWebView: UIViewRepresentable {
         """
         <!doctype html><html class="\(dark ? "night" : "day")"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <link rel="stylesheet" href="\(Api.base)/res/lm6.css">
+        <style>\(DictCSS.shared.text)</style>
         <style>
         html.day{color-scheme:light}
         html.night{color-scheme:dark}
@@ -328,5 +328,26 @@ struct EntryWebView: UIViewRepresentable {
             guard let s = m.body as? String else { return }
             if m.name == "snd" { parent.onSound(s) } else { parent.onWord(s) }
         }
+    }
+}
+
+
+/// 词典自带的 lm6.css 取一次存下来，之后内联进网页。
+/// 用 <link> 的话样式表会阻塞渲染 —— 服务器慢或者断网时整页空白（截图里抓到的）。
+final class DictCSS {
+    static let shared = DictCSS()
+    private(set) var text = ""
+    private init() {
+        text = UserDefaults.standard.string(forKey: "lm6css") ?? ""
+        Task { await refresh() }
+    }
+    func refresh() async {
+        var r = URLRequest(url: Api.url("/res/lm6.css"))
+        if let a = Api.authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
+        let session = URLSession(configuration: .default, delegate: CertTrust.shared, delegateQueue: nil)
+        guard let (d, _) = try? await session.data(for: r),
+              let css = String(data: d, encoding: .utf8), css.count > 500 else { return }
+        text = css
+        UserDefaults.standard.set(css, forKey: "lm6css")
     }
 }

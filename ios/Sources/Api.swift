@@ -94,8 +94,10 @@ enum Api {
 
     private static let session: URLSession = {
         let c = URLSessionConfiguration.default
-        c.waitsForConnectivity = true
-        c.timeoutIntervalForRequest = 20
+        // 不要 waitsForConnectivity：连不上时它会一直等，界面就永远转圈（截图里抓到的）
+        c.waitsForConnectivity = false
+        c.timeoutIntervalForRequest = 12
+        c.timeoutIntervalForResource = 60
         return URLSession(configuration: c, delegate: CertTrust.shared, delegateQueue: nil)
     }()
 

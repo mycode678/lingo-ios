@@ -10,6 +10,7 @@ struct ReviewScreen: View {
     @State private var shown = false
     @State private var loading = true
     @State private var toast: String?
+    @State private var failed: String?
 
     private var card: Api.Card? { queue.indices.contains(i) ? queue[i] : nil }
 
@@ -18,6 +19,14 @@ struct ReviewScreen: View {
             Group {
                 if loading {
                     ProgressView()
+                } else if let f = failed {
+                    ContentUnavailableView {
+                        Label("连不上服务器", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(f + "\n在「我的库 → 设置」里检查地址和账号密码。")
+                    } actions: {
+                        Button("重试") { Task { await load() } }.buttonStyle(.borderedProminent)
+                    }
                 } else if let c = card {
                     VStack(spacing: 20) {
                         Text("第 \(i + 1) / \(queue.count) 张　·　\(c.word ?? "")")
@@ -131,11 +140,17 @@ struct ReviewScreen: View {
         // 复习这一屏自己说了算：把精听台留下的循环、选区、"播完干什么"全清掉，
         // 不然会一直自动播、还停不下来（踩过）
         player.claim()          // 复习：不循环、不带选区、播完什么也不干
-        loading = true
-        queue = (try? await Api.due(40)) ?? []
+        loading = true; failed = nil
+        if Demo.on {
+            queue = Demo.sentences.map { .init(src: $0.src, word: Demo.word, en: $0.en, cn: $0.cn,
+                                               grp: $0.grp, tag: $0.tag, kind: "sent", reps: 1, due: 0) }
+        } else {
+            do { queue = try await Api.due(40) }
+            catch { failed = error.localizedDescription; queue = [] }
+        }
         i = 0; shown = false; toast = nil
         loading = false
-        replay()
+        if failed == nil { replay() }
     }
     private func replay() {
         guard let c = card else { return }
