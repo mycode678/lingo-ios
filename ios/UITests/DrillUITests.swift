@@ -7,13 +7,20 @@ import XCTest
 /// 之前横屏控制条滚不动、波形上圈不了选区，都是截图看不出来、只有真滑一次才知道的。
 final class DrillUITests: XCTestCase {
 
-    /// 一直往左滑，直到目标能点为止（最多 6 次）。一次 swipeLeft 不一定滑得到底。
+    /// 一直往左滑，直到目标真的落进控制条的可见范围里（最多 8 次）。
+    /// 不能用 isHittable 判断：元素还在滚动区外面时，XCUITest 会直接报
+    /// "Activation point invalid"，而不是老老实实返回 false。改成比坐标。
     private func scrollToEnd(_ strip: XCUIElement, target: XCUIElement) -> Bool {
-        for _ in 0..<6 {
-            if target.exists && target.isHittable { return true }
+        func visible() -> Bool {
+            guard target.exists else { return false }
+            let f = target.frame
+            return f.width > 1 && strip.frame.insetBy(dx: 2, dy: 0).intersects(f)
+        }
+        for _ in 0..<8 {
+            if visible() { return true }
             strip.swipeLeft()
         }
-        return target.exists && target.isHittable
+        return visible()
     }
 
     /// 失败时把当前屏幕上能点的东西列出来，省得瞎猜
