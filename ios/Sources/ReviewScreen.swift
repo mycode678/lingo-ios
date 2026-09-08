@@ -76,6 +76,11 @@ struct ReviewScreen: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)   // 卡片撑满上半屏，
                         .card(TX.color(cardBg))                             // 控件自然被推到下半屏
+                        .contentShape(Rectangle())
+                        // 中间这一大片就是主操作区：点一下＝再听一遍，点两下＝翻开/盖上原文。
+                        // 双击必须写在单击前面，否则单击先吃掉手势，双击永远不触发。
+                        .onTapGesture(count: 2) { withAnimation { shown.toggle() } }
+                        .onTapGesture { replay() }
                         .overlay(                                           // 浅色背景下卡片要看得见边
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
@@ -99,25 +104,15 @@ struct ReviewScreen: View {
                             // 下一张不再放按钮：左右滑就行，跟精听台一致
                         }
 
-                        if shown {
-                            HStack(spacing: T.gap) {
-                                gradeButton(1, "没听懂", .red)
-                                gradeButton(2, "勉强", .orange)
-                                gradeButton(3, "会了", .blue)
-                                gradeButton(4, "脱口而出", .green)
-                            }
-                        } else {
-                            Button { withAnimation { shown = true } } label: {
-                                Text("显示原文").font(.system(size: 16))
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                            }
-                            .buttonStyle(QuietButton(wide: true))
+                        HStack(spacing: T.gap) {
+                            gradeButton(1, "没听懂", .red)
+                            gradeButton(2, "勉强", .orange)
+                            gradeButton(3, "会了", .blue)
+                            gradeButton(4, "脱口而出", .green)
                         }
 
                         if let t = toast {
                             Text(t).font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Text("左右滑动换上下句").font(.caption2).foregroundStyle(.tertiary)
                         }
                     }
                     .padding(18)
@@ -125,11 +120,18 @@ struct ReviewScreen: View {
                     // 不用够到卡片那么高的地方。往左滑是下一张。
                     .contentShape(Rectangle())
                     .simultaneousGesture(
+                        // 左右、上下都能换：往左/往上＝下一张，往右/往下＝上一张。
+                        // 哪个方向划得多就按哪个算，省得斜着划两边都触发。
                         DragGesture(minimumDistance: 20)
                             .onEnded { g in
                                 let dx = g.translation.width, dy = g.translation.height
-                                guard abs(dx) > 48, abs(dx) > abs(dy) * 1.5 else { return }
-                                dx < 0 ? next() : prev()
+                                if abs(dx) >= abs(dy) {
+                                    guard abs(dx) > 48 else { return }
+                                    dx < 0 ? next() : prev()
+                                } else {
+                                    guard abs(dy) > 48 else { return }
+                                    dy < 0 ? next() : prev()
+                                }
                             }
                     )
                 } else {
