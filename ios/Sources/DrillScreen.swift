@@ -152,17 +152,126 @@ struct DrillScreen: View {
         }
     }
 
+    /// 横屏两侧的空白条：轻触＝播放/暂停。不画东西，就是个隐形的大按钮。
+    private var edgeTapZone: some View {
+        Color.clear
+            .frame(width: 30)
+            .contentShape(Rectangle())
+            .onTapGesture { player.toggle() }
+    }
+
+    /// 底部控制条：**一条**横向可滑的长条，竖屏横屏共用。
+    /// 顺序＝用得最多的在最左边（拇指落点）：列表、播放、录音、对比、整句、铺满，
+    /// 然后才是循环、间隔、显示、倍速。放不下就往左滑，不再占第二行高度
+    /// （原来两行 94 点，现在 44 点，省下的 50 点全给波形）。
+    private var controlStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Button { showList = true } label: {
+                    Image(systemName: "list.bullet").font(.system(size: 15))
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .frame(width: 42, height: 38)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button { player.toggle() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 18))
+                        .frame(width: 52, height: 38)
+                        .background(Color.accentColor).foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
+                                    : rec.start()
+                } label: {
+                    Label(rec.isRecording ? "停止" : "录音",
+                          systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
+                }
+                .buttonStyle(LabelButton(on: rec.isRecording))
+
+                if rec.hasTake {                       // 录过才有意义
+                    Button { rec.playAB(range: vm.selection) } label: {
+                        Label("对比", systemImage: "arrow.left.arrow.right").fixedSize()
+                    }
+                    .buttonStyle(LabelButton())
+                    if !showTake { takeReopen }
+                }
+
+                // 整句、铺满只在圈了选区时才出现 —— 没选区时它们没意义，白占位置
+                // （小句再点一次也能回到整句）
+                if vm.selection != nil {
+                    Button {
+                        vm.setSelection(a: nil, b: nil, play: false)
+                        vm.zoomAll()
+                        player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                                     onEnd: { autoAdvance(after: store.current?.src ?? "") })
+                        player.play(from: 0)
+                    } label: { Label("整句", systemImage: "rectangle.dashed").fixedSize() }
+                    .buttonStyle(LabelButton())
+
+                    Button { vm.zoomToSelection() } label: {
+                        Label("铺满", systemImage: "arrow.left.and.right").fixedSize()
+                    }
+                    .buttonStyle(LabelButton())
+                }
+
+                LoopButton(player: player, times: loopTimes,
+                           onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
+                           onHold: { showLoop = true })
+
+                // 连播＝一句播完自动跳下一句（原来只能在设置抽屉里开）
+                // 点＝开关连播，按住＝设"换下一句之前停多久"
+                Label("连播", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    .fixedSize()
+                    .font(.system(size: 12))
+                    .foregroundStyle(autoNext ? Color.accentColor : Color.primary.opacity(0.7))
+                    .padding(.horizontal, 9).frame(height: 38)
+                    .background(autoNext ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .contentShape(Rectangle())
+                    .onTapGesture { autoNext.toggle() }
+                    .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 30) { showGap = true }
+
+                gapChip
+                showMenu
+
+                ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
+                    rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001, w: 52,
+                             tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
+                             hold: { editRate = i })
+                }
+                rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
+                         on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001, w: 52,
+                         tap: {
+                             if customRate > 0 { player.rate = Float(customRate)
+                                                 if player.isPlaying { player.play() } }
+                             else { editRate = -1 }
+                         },
+                         hold: { editRate = -1 })
+            }
+            .padding(.horizontal, T.side)
+        }
+        .frame(maxWidth: .infinity)     // 不许按内容自撑宽，否则"内容比自己宽"不成立就滚不动
+        .frame(height: 44)
+        .accessibilityIdentifier("controlStrip")
+    }
+
     // MARK: - 两种屏幕方向
     //
     // 这一屏踩过太多次"块与块互相压住"（译文压住控制条、选区条压住波形）。
     // 根子是：给每块写死高度，加起来超过屏幕时 SwiftUI **不会**自动收缩，
-    // 而是让它们重叠。所以这里改成一句话的规矩：
+    // 而是让它们重叠。所以改成一句话的规矩：
     //
-    //   固定的几条（顶栏、选区条、小句、控制条、打分）高度是常数；
-    //   剩下多少（free）**先算出来**，再按比例分给波形和原文卡，两者相加恒等于 free。
+    //   固定的几条（顶栏/选区条/小句/控制条/打分）高度是常数；
+    //   剩下多少 free 先算出来，再分给波形和原文卡，两者相加恒等于 free。
     //
     // 这样无论字号多大、显示几行、有没有小句，总高都不可能超过屏幕。
-    // 另有 Audit（-demo -audit）在 CI 里逐个组合验一遍，重叠就 LAYOUT-FAIL。
+    // 另有 Audit（-demo -audit）在 CI 里把各种组合验一遍，重叠就 LAYOUT-FAIL。
 
     private struct Metrics {
         var header: CGFloat, sel: CGFloat, chunks: CGFloat, strip: CGFloat
@@ -181,61 +290,62 @@ struct DrillScreen: View {
         return v
     }
 
-    /// 波形和原文卡怎么分剩下的高度：先保证波形有 90，剩下的给卡片，卡片再让一半回来
+    /// 波形和原文卡怎么分剩下的高度：卡片最多拿 55%，波形至少留 90
     private func split(_ total: CGFloat, _ m: Metrics) -> (wave: CGFloat, card: CGFloat) {
         let free = max(120, total - m.fixed)
         guard anyText else { return (free, 0) }
-        let card = min(cardIdeal, free * 0.55)          // 卡片最多拿走 55%
+        let card = min(cardIdeal, free * 0.55)
         return (max(90, free - card), card)
     }
 
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         let m = Metrics(header: 34, sel: 30, chunks: vm.chunks.isEmpty ? 0 : 44,
                         strip: 44, grade: 38, gap: 20)
-        let (waveH, cardH) = split(geo.size.height, m)
+        let hs = split(geo.size.height, m)
         return VStack(spacing: 4) {
-            // 上半截（顶栏、波形、选区条、小句、原文）单独一层：跟读结果只浮在这一截上，
-            // 不许盖住下面的控制条 —— 盖住了就没法边看结果边重录，也没法在波形上圈选区。
+            // 上半截单独一层：跟读结果只浮在这一截上，不许盖住下面的控制条，
+            // 也不许盖满波形（盖住就没法圈选区）。
             VStack(spacing: 4) {
                 header.frame(height: m.header).auditBlock("顶栏")
-                waveBlock.frame(height: waveH).padding(.horizontal, T.side).auditBlock("波形")
+                waveBlock.frame(height: hs.wave).padding(.horizontal, T.side).auditBlock("波形")
                 VStack(spacing: 4) {
                     selectionBar(m.sel).auditBlock("选区条")
-                    if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
-                    if cardH > 0 {
-                        sentenceCard(s).frame(height: cardH)
+                    if hs.card > 0 {
+                        sentenceCard(s).frame(height: hs.card)
                             .padding(.horizontal, T.side).auditBlock("原文")
                     }
+                    Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
                 .accessibilityIdentifier("swipeArea")
-                .simultaneousGesture(swipeToStep)      // 波形以下整片都能左右滑切句
+                .simultaneousGesture(swipeToStep)
             }
             .overlay(alignment: .bottom) {
                 if rec.hasTake && showTake {
                     takePanel
-                        .frame(maxHeight: geo.size.height * 0.55)   // 别盖满，波形要留着圈选区
+                        .frame(maxHeight: geo.size.height * 0.55)
                         .background(.ultraThinMaterial)
                         .transition(.move(edge: .bottom))
                 }
             }
+            // 小句固定在底下这组的正上方，位置不随文字多少变
+            if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
             controlStrip.auditBlock("控制条")
             gradeRow(m.grade).auditBlock("打分")
         }
-        // 宽度交给父视图决定（.infinity＝"给我多少我用多少"）。
-        // 千万别写死 geo.size.width：横屏那是**含刘海区**的整屏宽，
-        // 比安全区宽 88 点，控制条会有一截藏在看不见也点不到的地方，还滚不动。
+        // 宽度交给父视图（.infinity＝给我多少用多少）。
+        // 千万别写死 geo.size.width：横屏那是含刘海区的整屏宽，比安全区宽 88 点，
+        // 控制条会自认为够宽于是不滚，右边一截藏在点不到的地方（踩过两次）。
         .frame(maxWidth: .infinity)
         .padding(.bottom, 2)
         .overlay { hintOverlay }
-        .overlay {                                   // 两侧空白＝隐形的播放/暂停键
+        .overlay {
             HStack(spacing: 0) { edgeTapZone; Spacer(minLength: 0); edgeTapZone }
                 .ignoresSafeArea()
         }
         .padding(.top, 2)
         .onAppear {
-            // 一转到横屏就把文字全收起来：横屏是拿来盯波形、抠发音的，
-            // 字在眼前就又变成"看着读"了。要看自己点底下那个"显示"。
+            // 一转到横屏就把文字全收起来：横屏是拿来盯波形、抠发音的
             showEn = false; showCn = false; showDef = false; showDcn = false
         }
     }
@@ -243,21 +353,18 @@ struct DrillScreen: View {
     private func portrait(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         let m = Metrics(header: 38, sel: 36, chunks: vm.chunks.isEmpty ? 0 : 44,
                         strip: 52, grade: 54, gap: 32)
-        let (waveH, cardH) = split(geo.size.height, m)
+        let hs = split(geo.size.height, m)
         return VStack(spacing: 0) {
             header.frame(height: m.header).auditBlock("顶栏")
             VStack(spacing: 8) {
-                waveBlock.frame(height: waveH).padding(.horizontal, T.side).auditBlock("波形")
-                // 波形以下这一整片都能左右滑着切句 —— 走路时单手最省事的动作。
-                // 波形自己不接：那儿要拖选区、双指缩放，两个手势打架必输。
+                waveBlock.frame(height: hs.wave).padding(.horizontal, T.side).auditBlock("波形")
+                // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
                     selectionBar(m.sel).auditBlock("选区条")
-                    if cardH > 0 {
-                        sentenceCard(s).frame(height: cardH)
+                    if hs.card > 0 {
+                        sentenceCard(s).frame(height: hs.card)
                             .padding(.horizontal, T.side).auditBlock("原文")
                     }
-                    // 小句一律排一行横着滑：换行排会变成两行，第二行会顶到"没听懂"上
-                    if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
@@ -267,7 +374,6 @@ struct DrillScreen: View {
             .padding(.top, 6)
             .frame(maxHeight: .infinity)
             .overlay { hintOverlay }
-            // 录完之后的结果单独浮一层，不动上面的布局
             .overlay(alignment: .bottom) {
                 if rec.hasTake && showTake {
                     takePanel
@@ -276,6 +382,8 @@ struct DrillScreen: View {
                         .transition(.move(edge: .bottom))
                 }
             }
+            // 小句固定在最底下这组的正上方 —— 位置永远不随文字多少变，闭着眼也能点
+            if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
             gradeRow(m.grade).auditBlock("打分")
             transport.auditBlock("控制条")
         }
@@ -297,7 +405,6 @@ struct DrillScreen: View {
                 .allowsHitTesting(false)
         }
     }
-
 
     /// 顶栏只回答一个问题："我现在在练哪个词的第几句"。
     /// 常用的切句、选句子一律不放这儿 —— 6.5 寸屏单手够不到顶部，
@@ -637,9 +744,7 @@ struct DrillScreen: View {
             }
             .padding(.horizontal, T.side)
         }
-        .frame(maxWidth: .infinity)      // 不许自己按内容撑宽，否则"内容比自己宽"不成立，就滚不动
         .frame(height: 44)
-        .accessibilityIdentifier("controlStrip")     // UI 测试按这个名字找它
     }
 
     private var takeBlock: some View {
