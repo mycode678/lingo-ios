@@ -171,23 +171,33 @@ final class WaveUIView: UIView {
         let laneBot = bounds.height - RULER
         let laneH = laneBot - laneTop
 
-        // 词条行
+        // 词条行：底色跟波形一致，只有"正在播的词"和"选区里的词"才上色 ——
+        // 每个词都涂一块的话，词一多就是一排脏色块（截图里看着很糙）
         if !words.isEmpty {
-            ctx.setFillColor(C.rowBg.cgColor)
+            ctx.setFillColor(C.bg.cgColor)
             ctx.fill(CGRect(x: 0, y: 0, width: W, height: rowH))
             for (i, w) in words.enumerated() {
                 let a = x(w.s), b = x(w.e)
                 if b < 0 || a > W { continue }
                 let inSel = hasSel && w.s >= selA! - 0.005 && w.e <= selB! + 0.005
-                ctx.setFillColor((inSel ? C.chipSel : C.chip[i % 2]).cgColor)
-                ctx.fill(CGRect(x: max(0, a), y: 0, width: min(W, b) - max(0, a) - 1, height: rowH - 3))
+                let isNow = head >= w.s - 0.005 && head < w.e + 0.005
+                if inSel || isNow {
+                    ctx.setFillColor((isNow ? C.markLine.withAlphaComponent(0.85)
+                                            : C.chipSel).cgColor)
+                    ctx.fill(CGRect(x: max(0, a), y: 1, width: min(W, b) - max(0, a) - 1,
+                                    height: rowH - 4))
+                }
+                // 词与词之间一条极淡的分隔线，够看出边界就行
+                ctx.setStrokeColor(C.grid.cgColor); ctx.setLineWidth(1)
+                ctx.move(to: CGPoint(x: a + 0.5, y: 2)); ctx.addLine(to: CGPoint(x: a + 0.5, y: laneBot))
+                ctx.strokePath()
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 11),
-                    .foregroundColor: inSel ? C.chipSelInk : C.chipInk]
-                let s = NSAttributedString(string: w.w, attributes: attrs)
-                let sz = s.size()
+                    .font: UIFont.systemFont(ofSize: 10.5, weight: (inSel || isNow) ? .semibold : .regular),
+                    .foregroundColor: (inSel || isNow) ? C.chipSelInk : C.chipInk]
+                let t = NSAttributedString(string: w.w, attributes: attrs)
+                let sz = t.size()
                 if b - a > sz.width + 6 {
-                    s.draw(at: CGPoint(x: (max(0, a) + min(W, b)) / 2 - sz.width / 2, y: 3))
+                    t.draw(at: CGPoint(x: (max(0, a) + min(W, b)) / 2 - sz.width / 2, y: 3))
                 }
             }
         }
