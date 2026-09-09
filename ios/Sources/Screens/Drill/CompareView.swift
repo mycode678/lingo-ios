@@ -51,7 +51,10 @@ struct CompareView: View {
         }
         .padding(T.s3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.04))
+        // 别用 Color.primary.opacity —— 深色下就是"白 4%"叠在 #1C1C1E 上，
+        // 两个面亮度差不到 4%，这个框会整个消失，诊断文字直接贴在卡片上。
+        // 系统的 fill 色本身就是随主题变的。
+        .background(Color(.tertiarySystemFill))
         .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
     }
 
