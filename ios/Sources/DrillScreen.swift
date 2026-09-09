@@ -373,7 +373,7 @@ struct DrillScreen: View {
             // 小句固定在底下这组的正上方，位置不随文字多少变
             chunkStrip.auditBlock("小句")
             controlStrip.auditBlock("控制条")
-            gradeRow(38).auditBlock("打分")
+            gradeRow(34).auditBlock("打分")
         }
         // 宽度交给父视图（.infinity＝给我多少用多少）。
         // 千万别写死 geo.size.width：横屏那是含刘海区的整屏宽，比安全区宽 88 点，
@@ -881,16 +881,16 @@ struct DrillScreen: View {
         return v >= 75 ? .green : (v >= 55 ? .orange : .red)
     }
 
-    private var gradeRow: some View { gradeRow(48) }
+    private var gradeRow: some View { gradeRow(40) }
     /// 横屏高度紧张，打分行矮一档（40）；竖屏还是 48
     private func gradeRow(_ h: CGFloat) -> some View {
         HStack(spacing: T.gap) {
             grade(1, "没听懂", .red, h); grade(2, "勉强", .orange, h)
             grade(3, "会了", .blue, h); grade(4, "脱口而出", .green, h)
         }
-        .padding(.horizontal, T.side).padding(.bottom, 6)
+        .padding(.horizontal, T.side).padding(.bottom, 4)
     }
-    private func grade(_ q: Int, _ t: String, _ c: Color, _ h: CGFloat = 48) -> some View {
+    private func grade(_ q: Int, _ t: String, _ c: Color, _ h: CGFloat = 40) -> some View {
         Button {
             Task {
                 guard let s = store.current else { return }
@@ -903,7 +903,8 @@ struct DrillScreen: View {
                 if autoNext { step(1) }
             }
         } label: {
-            Text(t).font(.system(size: h < 44 ? 16 : 17, weight: .semibold))
+            // 这四个键一次只按一下，不用做得那么大 —— 省下的高度给波形和跟读结果
+            Text(t).font(.system(size: h < 38 ? 14 : 15, weight: .semibold))
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: h)
                 .foregroundStyle(c)
