@@ -1,5 +1,16 @@
 import XCTest
 
+/// 断言失败时把屏幕上有什么打出来。
+/// 写成自由函数是有原因的：原来那个 `dump` 是某个测试类的私有方法，
+/// 别的类里写 `dump(app)` 会静默解析成标准库的 `Swift.dump`，
+/// 编译报 "'NSObject' is not convertible to 'String'"，很难一眼看出。
+func describe(_ app: XCUIApplication) -> String {
+    let names = app.buttons.allElementsBoundByIndex.prefix(40).map { $0.label }
+    let ids = app.descendants(matching: .any).allElementsBoundByIndex.prefix(60)
+        .compactMap { $0.identifier.isEmpty ? nil : $0.identifier }
+    return "按钮：" + names.joined(separator: " | ") + "；标识：" + Set(ids).joined(separator: " | ")
+}
+
 /// 真机式自测：模拟器里真的转屏、真的点、真的滑。
 ///
 /// 为什么非要有：静态截图只能看"某一种状态下长什么样"，看不出
@@ -327,7 +338,7 @@ final class OfflineUITests: XCTestCase {
         let flash = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS '下次'")).firstMatch
         XCTAssertTrue(flash.waitForExistence(timeout: 5),
-                      "断网时打分没算出下次复习时间（说明还在等服务器）；" + dump(app))
+                      "断网时打分没算出下次复习时间（说明还在等服务器）；" + describe(app))
         // 4) 顺手看看这一段里谁想联网、被挡了几次（不做断言，只写进日志）
         let probe = app.otherElements["netBlocked"]
         if probe.waitForExistence(timeout: 3) { print("【断网演练】被挡下的请求：" + probe.label) }
