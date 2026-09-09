@@ -53,6 +53,8 @@ final class Recorder: NSObject, ObservableObject {
             rms.append(abs(sin(x / 4.0)))
         }
         curve = (nat: nat, mine: mine, rms: rms)
+        // 逐词比对也造一份假的，好在模拟器上验界面（真机上是现算的）
+        diff = Demo.fakeCompare()
         hasTake = true
     }
 

@@ -14,6 +14,43 @@ enum Demo {
     }
 
     static let word = "excuse"
+
+    /// 给截图用的假比对结果：故意造出"虚词念太长 + 该连读没连 + 一个词不准"
+    /// 这三种典型毛病，好验界面在最热闹的情况下长什么样。
+    @MainActor static func fakeCompare() -> Compare {
+        var c = Compare()
+        let src: [(String, Double, Double, Double, Double, Int, Bool, Bool, Bool, Bool, Bool)] = [
+            // 词        原声起  原声止  我起    我止   准确 虚词  弱读  该连  我连  重读
+            ("Excuse",  0.32, 0.72, 0.30, 0.78,  88, false, false, true,  true,  true),
+            ("me",      0.72, 0.88, 0.78, 1.02,  76, true,  true,  false, false, false),
+            ("can",     0.96, 1.08, 1.10, 1.42,  62, true,  true,  true,  false, false),
+            ("you",     1.08, 1.22, 1.42, 1.66,  71, true,  true,  false, false, false),
+            ("tell",    1.28, 1.58, 1.72, 2.02,  84, false, false, true,  true,  true),
+            ("me",      1.58, 1.70, 2.02, 2.20,  69, true,  true,  false, false, false),
+            ("the",     1.76, 1.84, 2.26, 2.58,  48, true,  true,  true,  false, false),
+            ("way",     1.84, 2.12, 2.58, 2.86,  91, false, false, false, false, true),
+            ("to",      2.18, 2.28, 2.92, 3.16,  58, true,  true,  true,  false, false),
+            ("the",     2.28, 2.36, 3.16, 3.40,  52, true,  true,  true,  false, false),
+            ("museum",  2.36, 2.86, 3.40, 3.98,  57, false, false, false, false, true),
+            ("please",  2.92, 3.34, 4.04, 4.46,  86, false, false, false, false, true),
+        ]
+        c.words = src.enumerated().map { i, w in
+            Compare.WordDiff(id: i, text: w.0,
+                             natStart: w.1, natEnd: w.2, myStart: w.3, myEnd: w.4,
+                             accuracy: w.5, isFunction: w.6, natWeak: w.7,
+                             linkAfter: w.8, myLinkAfter: w.9, natStressed: w.10)
+        }
+        c.soundScore = 70; c.rhythmScore = 58; c.linkScore = 33; c.overall = 58
+        c.notes = [
+            .init(kind: .rhythm, text: "你把 the、to、can 这些虚词念得太重了。the 你用了 320 毫秒，"
+                  + "母语者只有 80 毫秒。英语里这类词要弱读到几乎听不见 —— "
+                  + "先只念重读的那几个词打拍子，顺了再把虚词像滑音一样塞进空隙。"),
+            .init(kind: .liaison, text: "「can you」母语者连成了一个音，你中间断开了。"
+                  + "试试把 can 的尾音直接滑进 you，别停顿。"),
+            .init(kind: .sound, text: "「museum」这个词念得最不像（57 分），点它单独听一遍原声再跟。"),
+        ]
+        return c
+    }
     /// -select 1 时预先圈一段，方便截图看"有选区"的样子
     static var preselect: Bool { ProcessInfo.processInfo.arguments.contains("-select") }
     /// 模拟器转不了屏，截横屏只能这么来：按横屏的宽高渲染，再整体转 90 度。
