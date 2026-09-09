@@ -174,3 +174,31 @@ final class RemoteControlUITests: XCTestCase {
         XCTAssertTrue(app.buttons["录音"].exists, "点了锁屏播放键之后界面不对了")
     }
 }
+
+/// 真机截图：把手机上真实的样子抓下来存进结果包，我再从 .xcresult 里取出来看。
+/// 有了它，"顶部图标只露一半"这种问题我自己就能看见，不用他截图给我。
+final class ShotUITests: XCTestCase {
+    private func shot(_ app: XCUIApplication, _ name: String) {
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+    }
+    func testCaptureScreens() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-screen", "drill"]
+        app.launch()
+        XCUIDevice.shared.orientation = .portrait
+        sleep(3); shot(app, "竖屏")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(3); shot(app, "横屏")
+        // 文字全开：最容易把波形挤没的情况
+        app.buttons["显示"].tap()
+        for t in ["原文", "译文", "中文释义", "英文释义"] where app.buttons[t].exists {
+            app.buttons[t].tap(); app.buttons["显示"].tap()
+        }
+        sleep(2); shot(app, "横屏-文字全开")
+        XCUIDevice.shared.orientation = .portrait
+        sleep(3); shot(app, "竖屏-文字全开")
+    }
+}
