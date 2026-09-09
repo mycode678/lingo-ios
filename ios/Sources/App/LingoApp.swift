@@ -22,14 +22,22 @@ struct LingoApp: App {
 
     init() {
         NowPlaying.shared.wire()
-        if Demo.bigFont { UserDefaults.standard.set(26.0, forKey: "ui.resultFont") }
-        if Demo.audit {
-            // 体检模式：把"内容最多"的情况造出来 —— 四样文字全开、字号拉大。
-            // 布局要是会压，这种组合最容易压。
+        // -demo 下**每次都把这几个偏好写死**，不管上一次跑剩下什么。
+        //
+        // 为什么必须这样：同一台模拟器上先跑截图（-audit 会把四样文字全打开、
+        // 字号拉到 30）、再跑交互测试，UserDefaults 是留在应用容器里的 ——
+        // 于是"默认什么文字都不显示"那条测试拿到的是上一轮留下的 true，直接红。
+        // 以前横屏的 onAppear 会顺手把它们清成 false，把这个污染盖住了；
+        // 那行代码是错的（它会抹掉用户的真实偏好），删掉之后污染就露出来了。
+        //
+        // 测试和截图必须是可重复的：同样的启动参数，永远同样的起始状态。
+        if Demo.on {
             let d = UserDefaults.standard
-            for k in ["show2.en", "show2.cn", "show2.dfe", "show2.dcn"] { d.set(true, forKey: k) }
-            d.set(30.0, forKey: "ui.sentFont")
-            d.set(22.0, forKey: "ui.cnFont")
+            let full = Demo.audit          // 体检要的是"内容最多"的那种情况
+            for k in ["show2.en", "show2.cn", "show2.dfe", "show2.dcn"] { d.set(full, forKey: k) }
+            d.set(full ? 30.0 : 21.0, forKey: "ui.sentFont")
+            d.set(full ? 22.0 : 16.0, forKey: "ui.cnFont")
+            d.set(Demo.bigFont ? 26.0 : 17.0, forKey: "ui.resultFont")
         }
     }
 
