@@ -442,26 +442,29 @@ struct DrillScreen: View {
 
     private func portrait(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         // 同上，实测：控制条 44＋上下内边距＝58，打分 48＋6＝54＋行距＝60
-        let cardHeight = cardH(geo.size.height)
         return VStack(spacing: 0) {
             probeButtons
             if Audit.on { AuditProbe() }
             VStack(spacing: 8) {
-                // 唯一的弹性件。给它优先权，让它先把富余的高度吃掉 ——
-                // 不给的话它和下面的文字区平分，中间空出一大片，界面看着像塌了。
-                // 但也不能全吃：留下的那截是"左右滑切句"的手指落点，不能太窄。
+                // 波形按屏高比例给固定高度，剩下的全归原文卡。
+                // 原来让波形把富余全吃掉，长到 350 点 —— 太高了，一半就够看够划；
+                // 省下来的给"原文 + 录音波形"更值。
+                // 录过音之后是上下两条波形（原声在上、自己的在下），才给它长一截。
                 waveBlock
-                    .frame(minHeight: 60, maxHeight: max(200, geo.size.height * 0.55))
+                    .frame(height: max(150, geo.size.height * (rec.hasTake ? 0.42 : 0.28)))
                     .padding(.horizontal, T.side).auditBlock("波形")
-                    .layoutPriority(1)      // 必须写在最外层：套在 padding 里面等于没写
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
                     selectionBar.auditBlock("选区条")
-                    if cardHeight > 0 {
-                        sentenceCard(s).frame(height: cardHeight)
+                    if anyText {
+                        // 原文卡占满波形以下的剩余高度：字少时是一块干净的底，
+                        // 不是一片说不清的空白；字多时在卡片里自己滚。
+                        sentenceCard(s)
+                            .frame(maxHeight: .infinity)
                             .padding(.horizontal, T.side).auditBlock("原文")
+                    } else {
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
                 .accessibilityElement(children: .contain)   // 不声明的话 UI 测试找不到这块
