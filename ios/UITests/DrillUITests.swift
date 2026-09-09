@@ -52,7 +52,9 @@ final class DrillUITests: XCTestCase {
         XCTAssertTrue(app.buttons["录音"].exists, "控制条上没有录音")
         // 按他给的高频顺序排完，最右边那个是 ⋯（更多），不再是「自定」倍速。
         // 这一条要保证的是"整条真的能滑到底"，所以盯最后一个元素。
-        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["More"].firstMatch),
+        // 盯最后一个元素才测得出"整条真的能滑到底"。
+        // 用自己起的标识，不用 SF Symbol 的英文无障碍名 —— 那个换个系统语言就找不到了。
+        XCTAssertTrue(scrollToEnd(strip, target: app.otherElements["moreMenu"].firstMatch),
                       "控制条滑到底也点不到最后一个（⋯）；" + dump(app))
     }
 
@@ -62,8 +64,8 @@ final class DrillUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let strip = app.scrollViews.matching(identifier: "controlStrip").firstMatch
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "横屏找不到控制条")
-        XCTAssertTrue(scrollToEnd(strip, target: app.descendants(matching: .any)["rate-自定"]),
-                      "横屏控制条滑到底也点不到最后一个（自定）；" + dump(app))
+        XCTAssertTrue(scrollToEnd(strip, target: app.otherElements["moreMenu"].firstMatch),
+                      "横屏控制条滑到底也点不到最后一个（⋯）；" + dump(app))
     }
 
     /// 波形上必须能长按拖出选区（长按 0.18 秒再拖）
@@ -198,10 +200,12 @@ final class ShotUITests: XCTestCase {
     /// 眼睛在截图上估"波形是不是长高了"估不准，这里给的是真数。
     private func audit(_ app: XCUIApplication, _ when: String) {
         let p = app.otherElements["auditReport"]
-        guard p.waitForExistence(timeout: 5), !p.label.isEmpty else {
-            print("【体检 \(when)】没拿到"); return
-        }
+        XCTAssertTrue(p.waitForExistence(timeout: 8), "【体检 \(when)】拿不到体检探针")
+        XCTAssertFalse(p.label.isEmpty, "【体检 \(when)】体检没出结果")
         print("【体检 \(when)】" + p.label)
+        // 有重叠/超屏就让测试红 —— 光打印不断言，这套体检在 CI 里等于摆设
+        XCTAssertFalse(p.label.contains("LAYOUT-FAIL"),
+                       "【体检 \(when)】布局有重叠或超出屏幕：" + p.label)
         let att = XCTAttachment(string: p.label)
         att.name = "体检 " + when; att.lifetime = .keepAlways
         add(att)
@@ -233,6 +237,9 @@ final class ShotUITests: XCTestCase {
         for t in ["原文", "译文", "中文释义", "英文释义"] where app.buttons[t].exists {
             app.buttons[t].tap(); app.buttons["显示"].tap()
         }
+        // 循环最后一轮把菜单又打开了，不关掉的话这两张最该看清版式的截图
+        // 有大半被弹出的菜单盖住
+        app.coordinateWithNormalizedOffset(CGVector(dx: 0.5, dy: 0.06)).tap()
         sleep(2); shot(app, "横屏-文字全开"); audit(app, "横屏-文字全开")
         XCUIDevice.shared.orientation = .portrait
         sleep(3); shot(app, "竖屏-文字全开"); audit(app, "竖屏-文字全开")

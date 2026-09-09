@@ -82,8 +82,10 @@ enum Audit {
         print(report)
         print(fails.isEmpty ? "LAYOUT-OK" : "LAYOUT-FAIL 共 \(fails.count) 处")
         fflush(stdout)
-        let one = lines.map { $0.replacingOccurrences(of: "AUDIT ", with: "") }
-                       .joined(separator: " | ")
+        // fails 也得进去。原来只拼 lines，真出现重叠时测试日志里看到的
+        // 只是一串正常坐标，这套体检在 CI 里等于摆设。
+        let one = (lines.map { $0.replacingOccurrences(of: "AUDIT ", with: "") }
+                   + fails).joined(separator: " | ")
         DispatchQueue.main.async { Audit.report.text = one }
     }
 }

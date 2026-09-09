@@ -341,10 +341,15 @@ final class WaveUIView: UIView {
             ctx.strokePath()
             let s = NSAttributedString(string: String(format: step < 1 ? "%.1fs" : "%.0fs", tt),
                 attributes: [.font: UIFont.systemFont(ofSize: 10), .foregroundColor: C.rulerInk])
-            // 居中画会让最左最右那个数字被卡片边缘切掉半截（"0s" 看着像 ")s"），
-            // 所以把它推回可见范围里
+            // 居中画会让最左最右那个数字被卡片边缘切掉半截（"0s" 看着像 ")s"）。
+            // 但硬钳到边上又会跟自己那根刻度线错开半个字，读数会指错 ——
+            // 所以放不下时改成**贴着刻度线**画（左边贴右、右边贴左），
+            // 数字和它的刻度线始终挨着，不会张冠李戴。
             let lw = s.size().width
-            let lx = min(max(xx - lw / 2, 2), W - lw - 2)
+            var lx = xx - lw / 2
+            if lx < 2 { lx = xx + 3 }
+            if lx + lw > W - 2 { lx = xx - lw - 3 }
+            lx = min(max(lx, 2), max(2, W - lw - 2))
             s.draw(at: CGPoint(x: lx, y: laneBot + 5))
             tt += step
         }

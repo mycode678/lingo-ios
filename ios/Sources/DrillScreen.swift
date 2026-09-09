@@ -62,6 +62,8 @@ struct DrillScreen: View {
     @State private var autoPlayedSrc: String?
     /// 原文卡里的字实际占多高（量出来的，见 sentenceCard）
     @State private var cardContentH: CGFloat = 0
+    /// 这一次换句是不是连播自己跳的（连播跳过来必须出声，跟"自动播"开关无关）
+    @State private var autoNextJump = false
     @State private var probeBar = false          // -probe：真机测试用的后门按钮排
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
@@ -109,31 +111,43 @@ struct DrillScreen: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            // 分组背景：卡片是白的，底也得比白深一点，卡片才是卡片。
+            // 两个方向共用 —— 只加在竖屏的话，横屏勾出原文来卡片照样是隐形的。
+            .background(Color(.systemGroupedBackground))
             .coordinateSpace(name: "drill")           // 体检按这个坐标系算，转屏截图也不会算错
             .onPreferenceChange(BlockKey.self) { blocks in
                 Audit.check(blocks, screen: geo.size)      // 只在 -demo -audit 下工作
             }
+            // 体检结果的出口。必须两个方向都有：横屏才是最容易挤重叠的方向，
+            // 原来只写在竖屏里，横屏那份体检永远是"没拿到"。
+            .overlay(alignment: .topLeading) { if Audit.on { AuditProbe() } }
+            // 这几个设置改完要立刻送到播放器。原来挂在 transport 上，
+            // 而 transport 只有竖屏用，横屏改了得等切下一句才生效。
+            .onChange(of: gapIn) { _, v in player.gapIn = v }
+            .onChange(of: gapOut) { _, v in player.gapOut = v }
+            .onChange(of: loopTimes) { _, v in player.loopTimes = v }
+            .onChange(of: snap) { _, v in vm.snap = v }
         }
 
         .onAppear {
-            // 复习页和精听页共用一个播放器：在复习里放过 A 句，回到精听页时
-            // 播放器里装的还是 A，点播放就放错人。切回来先对一下是不是当前这句。
-            wireNowPlaying(s)          // 锁屏/耳机的播放键交给这一屏
-            guard player.loadedSrc != s.src else { return }
-            Task {
-                player.pause()
-                try? await Player.shared.load(src: s.src)
-                player.claim(loop: player.loop, times: loopTimes, segment: vm.selection,
-                             onEnd: { autoAdvance(after: s.src) })
-            }
+            // 锁屏/耳机的播放键交给这一屏。装载统一走下面的 .task，
+            // 这里不再自己 claim —— 两条路各传各的区间，谁后落地谁说了算，
+            // 结果是"有时放整句有时放那一小段"，还复现不了。
+            wireNowPlaying(s)
         }
         .task(id: s.src) {
+            // 这一屏跟复习页共用播放器：从复习页回来时播放器里装的可能是别的句子。
+            let fresh = player.loadedSrc != s.src
             await vm.load(s)
             vm.snap = snap
             player.gapIn = gapIn
-            // 连播落到新一句时播多少：整句（默认）还是这句记住的选区。
-            // 这一句只管"刚换过来"这一下；用户自己去划选区、点小句走的是另一条路。
-            let seg = loopWhole ? nil : vm.selection
+            player.gapOut = gapOut          // 漏了这句：改完"换下一句之前"重开 App 就白改
+            // 连播落到**新一句**时播多少：整句（默认）还是这句记住的选区。
+            // 只认"真的换了句"。从别的标签页切回来 src 没变，这时候必须原样保留
+            // 当前选区 —— 否则波形上选区还画着、右上角还写着秒数，按播放却放整句。
+            let switched = autoPlayedSrc != s.src
+            let seg = (switched && loopWhole) ? nil : vm.selection
+            if fresh { player.pause(); try? await Player.shared.load(src: s.src) }
             player.claim(loop: player.loop, times: loopTimes,
                          segment: seg,
                          onEnd: { autoAdvance(after: s.src) })
@@ -155,9 +169,13 @@ struct DrillScreen: View {
             }
             // 切到一句就自动响 —— 走路时用音量键切句、屏幕黑着，不自动播等于没法用。
             // 但只在**真的换了句子**时才响：从别的页切回精听不该突然出声。
-            if autoPlay, autoPlayedSrc != s.src {
+            // 连播自己跳过来的那一次必须响，跟"自动播"这个开关无关 ——
+            // 否则关了自动播之后开连播，换过去就静止，看着像连播坏了。
+            if switched {
+                let byWalk = autoNextJump
+                autoNextJump = false
                 autoPlayedSrc = s.src
-                player.play(from: seg?.lowerBound ?? 0)
+                if autoPlay || byWalk { player.play(from: seg?.lowerBound ?? 0) }
             }
         }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
@@ -330,6 +348,7 @@ struct DrillScreen: View {
                         .foregroundStyle(Color.primary.opacity(0.55))
                         .frame(width: 40, height: 38)
                 }
+                .accessibilityIdentifier("moreMenu")   // 测试盯这个，别盯系统的英文名
 
             }
             .padding(.horizontal, T.side)
@@ -444,14 +463,17 @@ struct DrillScreen: View {
         // 同上，实测：控制条 44＋上下内边距＝58，打分 48＋6＝54＋行距＝60
         return VStack(spacing: 0) {
             probeButtons
-            if Audit.on { AuditProbe() }
             VStack(spacing: 8) {
                 // 波形按屏高比例给固定高度，剩下的全归原文卡。
                 // 原来让波形把富余全吃掉，长到 350 点 —— 太高了，一半就够看够划；
                 // 省下来的给"原文 + 录音波形"更值。
                 // 录过音之后是上下两条波形（原声在上、自己的在下），才给它长一截。
+                // 但**一个字都不显示时**（默认状态：先听声音不看字）下面没人接这块地，
+                // 钉死 28% 就会空出小半屏灰底 —— 这种时候让波形自己长满。
                 waveBlock
-                    .frame(height: max(150, geo.size.height * (rec.hasTake ? 0.42 : 0.28)))
+                    .frame(minHeight: 150,
+                           maxHeight: anyText ? max(150, geo.size.height * (rec.hasTake ? 0.42 : 0.28))
+                                              : .infinity)
                     .padding(.horizontal, T.side).auditBlock("波形")
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
@@ -489,9 +511,6 @@ struct DrillScreen: View {
             transport.auditBlock("控制条")
         }
         .frame(maxWidth: .infinity)
-        // 分组背景：卡片是白的，底也得比白深一点，卡片才是卡片。
-        // 原来底和卡同色，原文卡等于隐形，下半屏看着就是一片没来由的空白。
-        .background(Color(.systemGroupedBackground))
     }
 
     /// 测试后门：把"耳机/锁屏/音量键"这些没法用代码按的动作，做成看得见点得到的按钮。
@@ -913,11 +932,16 @@ struct DrillScreen: View {
                     .padding(.horizontal, T.side)
                 }
                 // 右边缘渐隐：不加的话最后一块被一刀切平，看着像渲染坏了，
-                // 也看不出"还能往右滑"
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0),
-                                             .init(color: .black, location: 0.93),
-                                             .init(color: .black.opacity(0), location: 1)],
-                                     startPoint: .leading, endPoint: .trailing))
+                // 也看不出"还能往右滑"。
+                // 用 overlay 盖一层同色渐变，不用 mask —— mask 会不会连手势一起挡掉
+                // 各版本说法不一，最后一块小句正好落在渐隐区里，赌不起。
+                .overlay(alignment: .trailing) {
+                    LinearGradient(colors: [Color(.systemGroupedBackground).opacity(0),
+                                            Color(.systemGroupedBackground)],
+                                   startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 24)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .frame(height: 44)
@@ -1028,10 +1052,8 @@ struct DrillScreen: View {
         controlStrip
         .padding(.top, 8).padding(.bottom, 6)
         .background(.bar)
-        .onChange(of: gapIn) { _, v in player.gapIn = v }
-        .onChange(of: gapOut) { _, v in player.gapOut = v }
-        .onChange(of: loopTimes) { _, v in player.loopTimes = v }
-        .onChange(of: snap) { _, v in vm.snap = v }
+        // 这几个设置的 onChange 别挂这儿 —— transport 只有竖屏用，
+        // 横屏走的是 controlStrip，挂这儿等于横屏改了不生效。统一挂在 content 上。
     }
     // MARK: - 两个小面板：播放间隔、改某一档速度
 
@@ -1275,6 +1297,7 @@ struct DrillScreen: View {
         guard on() else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, player.gapOut)) {
             guard on(), store.current?.src == src else { return }
+            autoNextJump = true          // 这一跳是连播干的，落地必须出声
             step(1)
         }
     }
