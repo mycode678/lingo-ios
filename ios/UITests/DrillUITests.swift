@@ -54,7 +54,7 @@ final class DrillUITests: XCTestCase {
         // 这一条要保证的是"整条真的能滑到底"，所以盯最后一个元素。
         // 盯最后一个元素才测得出"整条真的能滑到底"。
         // 用自己起的标识，不用 SF Symbol 的英文无障碍名 —— 那个换个系统语言就找不到了。
-        XCTAssertTrue(scrollToEnd(strip, target: app.otherElements["moreMenu"].firstMatch),
+        XCTAssertTrue(scrollToEnd(strip, target: app.descendants(matching: .any)["moreMenu"].firstMatch),
                       "控制条滑到底也点不到最后一个（⋯）；" + dump(app))
     }
 
@@ -64,7 +64,7 @@ final class DrillUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         let strip = app.scrollViews.matching(identifier: "controlStrip").firstMatch
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "横屏找不到控制条")
-        XCTAssertTrue(scrollToEnd(strip, target: app.otherElements["moreMenu"].firstMatch),
+        XCTAssertTrue(scrollToEnd(strip, target: app.descendants(matching: .any)["moreMenu"].firstMatch),
                       "横屏控制条滑到底也点不到最后一个（⋯）；" + dump(app))
     }
 

@@ -397,24 +397,26 @@ struct DrillScreen: View {
         anyText ? min(cardIdeal, total * 0.35) : 0
     }
 
-    /// 横屏的波形高度：按屏高比例，不写死数字 ——
-    /// 写死 210 在 SE（横屏才 375 高）上就把别的挤没了，在 iPad 上又浪费。
-    ///   SE 375 → 195    11 Pro Max 414 → 215    iPad 1024 → 封顶 260
-    private func waveH(_ total: CGFloat) -> CGFloat {
-        min(max(total * 0.52, 150), 260)
-    }
-
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         // 这些常数都是体检（-audit）量出来的实际值，不是拍脑袋估的：
-        // 顶栏内部写死 38；横屏控制条 44、打分 38＋6 内边距＝44。
-        let cardHeight = cardH(geo.size.height)
+        // 横屏控制条 44、打分 34、选区条 30、小句 44，五个 4 点间距。
+        //
+        // 以前波形按屏高比例硬给（0.52，封顶 260），跟下面几块加起来能顶到
+        // 451 点，而横屏内容区只有 393 —— 波形顶上被切掉 31 点、打分整行
+        // 掉到屏幕外面。体检早就量出来了，但那时候它只打印不断言，所以一直没人管。
+        //
+        // 改成先把固定的几块扣掉，剩下多少才分给"波形 + 原文"，保证一定装得下。
+        let fixed: CGFloat = 30 + 44 + 44 + 34 + 4 * 5 + 2   // 选区条+小句+控制条+打分+间距+底边
+        let avail = max(120, geo.size.height - fixed)
+        let cardHeight = anyText ? min(cardIdeal, avail * 0.42) : 0
+        let waveHeight = max(100, avail - cardHeight - (cardHeight > 0 ? 4 : 0))
         return VStack(spacing: 4) {
             // 上半截单独一层：跟读结果只浮在这一截上，不许盖住下面的控制条，
             // 也不许盖满波形（盖住就没法圈选区）。
             VStack(spacing: 4) {
-                // 横屏波形固定高度，谁也别想挤它 —— 这是横屏存在的理由
+                // 横屏波形拿走剩下的全部高度 —— 这是横屏存在的理由
                 waveBlock
-                    .frame(height: waveH(geo.size.height))
+                    .frame(height: waveHeight)
                     .padding(.horizontal, T.side).auditBlock("波形")
                 VStack(spacing: 4) {
                     selectionBar(30).auditBlock("选区条")
