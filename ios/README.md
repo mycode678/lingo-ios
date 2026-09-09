@@ -8,14 +8,17 @@
 
 ## 已经写好的
 
-| 文件 | 干什么 |
+源码按分层放（见根目录 `ARCHITECTURE.md`），**上层只能调下层**：
+
+| 目录/文件 | 干什么 |
 |---|---|
-| `Sources/Api.swift` | 服务端接口 + 数据模型；自签证书只对配置的那台放行 |
-| `Sources/Player.swift` | AVAudioEngine 播放引擎：变速不变调、A-B 段精确循环、包络给波形用 |
-| `Sources/VolumeKeys.swift` | **音量键切上一句/下一句**（监听 outputVolume 再复位，网页做不到） |
-| `Sources/NowPlaying.swift` | 锁屏/控制中心/耳机/车机的播放控制 |
-| `Sources/Cache.swift` | 音频下到沙盒，走路没网也能练；按最久没用淘汰 |
-| `Sources/WaveView.swift` | 波形：自己画自己收手势（单指平移、双指缩放、点一下拉边、长按画选区、大手柄） |
+| `Sources/App/` | `LingoApp` 入口、`AppEnv` 依赖注入、`Demo` 演示数据、`DBSelfTest` 库自检屏 |
+| `Sources/Engines/` | 全在本机算的引擎：`Player` 播放（变速不变调、A-B 精确循环）、`Aligner` CTC 强制对齐（CoreML）、`Speech` 离线识别、`Compare` 逐词打分与诊断、`Recorder` 录音、`VolumeKeys` **音量键切上下句**、`NowPlaying` 锁屏/耳机控制 |
+| `Sources/Stores/` | `DB` 本机 SQLite（进度/收藏/难点/录音索引/额度）、`Cache` 音频沙盒缓存、`Api` 服务端接口（正在降级成可选备份通道） |
+| `Sources/Services/` | 业务层（`Store` 在这儿，其余 Service 待建） |
+| `Sources/Screens/` | `Today/` `Catalog/` `Drill/` `Mine/` 四组界面，精听台在 `Drill/` |
+| `Sources/UI/` | `Theme` 设计 token、`WaveView` 波形（自己画自己收手势）、`TextStyle`、`Audit` 布局体检 |
+| `guard-privacy.sh` | 隐私红线守卫：App 里只要再出现上传录音的代码路径，CI 就红 |
 | `project.yml` | XcodeGen 工程定义（.pbxproj 是生成物，不手写） |
 
 ## 还没写
