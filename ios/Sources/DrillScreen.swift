@@ -412,8 +412,12 @@ struct DrillScreen: View {
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
-                waveBlock                                   // 唯一的弹性件
-                    .frame(minHeight: 60, maxHeight: .infinity)
+                // 唯一的弹性件。给它优先权，让它先把富余的高度吃掉 ——
+                // 不给的话它和下面的文字区平分，中间空出一大片，界面看着像塌了。
+                // 但也不能全吃：留下的那截是"左右滑切句"的手指落点，不能太窄。
+                waveBlock
+                    .frame(minHeight: 60, maxHeight: max(200, geo.size.height * 0.5))
+                    .layoutPriority(1)
                     .padding(.horizontal, T.side).auditBlock("波形")
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
@@ -485,8 +489,14 @@ struct DrillScreen: View {
     private var waveBlock: some View {
         WaveView(vm: vm)
             .clipShape(RoundedRectangle(cornerRadius: T.card, style: .continuous))
-            .overlay(alignment: .topLeading) { corner(leading) }
-            .overlay(alignment: .topTrailing) { corner(trailing) }
+            // 角标要躲开波形顶上那一行词（截图里"excuse 1/3"正好把前几个词盖住了）：
+            // 有词就整体下移一行的高度，没词就贴顶。22 是 WaveView 里词条行的高度。
+            .overlay(alignment: .topLeading) { corner(leading).padding(.top, wordRowH) }
+            .overlay(alignment: .topTrailing) { corner(trailing).padding(.top, wordRowH) }
+    }
+
+    /// 波形顶上那行词占多高（没对齐好、没词的时候是 0）
+    private var wordRowH: CGFloat { vm.words.isEmpty ? 0 : 22 }
     }
 
     /// 左上角：在练哪个词第几句（顶栏拆掉之后这个信息挪到这儿）
