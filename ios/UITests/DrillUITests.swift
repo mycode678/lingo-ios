@@ -50,8 +50,10 @@ final class DrillUITests: XCTestCase {
         XCTAssertTrue(strip.waitForExistence(timeout: 10), "找不到控制条")
 
         XCTAssertTrue(app.buttons["录音"].exists, "控制条上没有录音")
-        XCTAssertTrue(scrollToEnd(strip, target: app.descendants(matching: .any)["rate-自定"]),
-                      "控制条滑到底也点不到最后一个（自定）；" + dump(app))
+        // 按他给的高频顺序排完，最右边那个是 ⋯（更多），不再是「自定」倍速。
+        // 这一条要保证的是"整条真的能滑到底"，所以盯最后一个元素。
+        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["More"].firstMatch),
+                      "控制条滑到底也点不到最后一个（⋯）；" + dump(app))
     }
 
     /// 横屏：同样要能滑。这一条就是为了逮住"横屏滚不动"那个 bug。
@@ -111,6 +113,10 @@ final class DrillUITests: XCTestCase {
         let sentence = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS 'Excuse me, can you tell'")).firstMatch
         XCTAssertFalse(sentence.exists, "默认应该什么文字都不显示（先听声音）")
+        // 「显示」排在几档倍速后面，一进来在屏幕外，得先把控制条滑过去。
+        let strip = app.scrollViews.matching(identifier: "controlStrip").firstMatch
+        XCTAssertTrue(scrollToEnd(strip, target: app.buttons["显示"]),
+                      "滑到底也点不到「显示」；" + dump(app))
         app.buttons["显示"].tap()
         app.buttons["原文"].tap()
         XCTAssertTrue(sentence.waitForExistence(timeout: 3), "勾了原文却没显示出来")
