@@ -239,7 +239,7 @@ final class ShotUITests: XCTestCase {
         }
         // 循环最后一轮把菜单又打开了，不关掉的话这两张最该看清版式的截图
         // 有大半被弹出的菜单盖住
-        app.coordinateWithNormalizedOffset(CGVector(dx: 0.5, dy: 0.06)).tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
         sleep(2); shot(app, "横屏-文字全开"); audit(app, "横屏-文字全开")
         XCUIDevice.shared.orientation = .portrait
         sleep(3); shot(app, "竖屏-文字全开"); audit(app, "竖屏-文字全开")
