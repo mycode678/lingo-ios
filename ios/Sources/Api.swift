@@ -215,6 +215,20 @@ enum Api {
         r.httpBody = data
         _ = try? await session.data(for: r)
     }
+    /// 只把分数和听写结果同步给服务器（做进度统计），**录音本身不上传**。
+    /// 录音永远只留在手机上 —— 这是这个 App 对用户的承诺，也让隐私政策能写得干干净净。
+    static func uploadRecMeta(_ src: String, score: Double?, heard: String, dur: Double) async {
+        var c = URLComponents(string: base + "/api/rec/meta")!
+        c.queryItems = [.init(name: "src", value: src),
+                        .init(name: "heard", value: heard),
+                        .init(name: "dur", value: String(dur))]
+        if let s = score { c.queryItems?.append(.init(name: "score", value: String(s))) }
+        var r = URLRequest(url: c.url!)
+        r.httpMethod = "POST"
+        if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
+        _ = try? await session.data(for: r)
+    }
+
     /// 本机 whisper 听写（跟读打分用）
     static func recognize(wav: Data) async throws -> String {
         let boundary = "----lingo\(Int(Date().timeIntervalSince1970 * 1000))"

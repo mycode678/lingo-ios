@@ -189,21 +189,28 @@ struct DrillScreen: View {
                 }
                 .buttonStyle(.plain)
 
+                // 录音是"听"之外的另一半，跟播放键一样该显眼：录着的时候整块变红
                 Button {
                     rec.isRecording ? rec.stop(sentence: store.current, natWords: vm.words, autoAB: autoAB, range: vm.selection)
                                     : rec.start()
                 } label: {
                     Label(rec.isRecording ? "停止" : "录音",
-                          systemImage: rec.isRecording ? "stop.fill" : "mic").fixedSize()
+                          systemImage: rec.isRecording ? "stop.fill" : "mic")
+                        .fixedSize()
+                        .font(.system(size: T.f2, weight: .medium))
+                        .foregroundStyle(rec.isRecording ? Color.white : Color.accentColor)
+                        .padding(.horizontal, 11).frame(height: 38)
+                        .background(rec.isRecording ? Color.red : Color.accentColor.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
                 }
-                .buttonStyle(LabelButton(on: rec.isRecording))
+                .buttonStyle(.plain)
 
                 if rec.hasTake {                       // 录过才有意义
                     Button { rec.playAB(range: vm.selection) } label: {
                         Label("对比", systemImage: "arrow.left.arrow.right").fixedSize()
                     }
                     .buttonStyle(LabelButton())
-                    if !showTake { takeReopen }
+                    if !showTake { takeReopen }        // 关掉了还能叫回来
                 }
 
                 // 整句、铺满只在圈了选区时才出现 —— 没选区时它们没意义，白占位置
@@ -373,7 +380,7 @@ struct DrillScreen: View {
             // 小句固定在底下这组的正上方，位置不随文字多少变
             chunkStrip.auditBlock("小句")
             controlStrip.auditBlock("控制条")
-            gradeRow(34).auditBlock("打分")
+            gradeRow(30).auditBlock("打分")
         }
         // 宽度交给父视图（.infinity＝给我多少用多少）。
         // 千万别写死 geo.size.width：横屏那是含刘海区的整屏宽，比安全区宽 88 点，
@@ -596,10 +603,23 @@ struct DrillScreen: View {
 
     /// 结果下滑收起来之后，用它叫回来（录音还在，不用重录）
     private var takeReopen: some View {
-        Button { withAnimation(.easeOut(duration: 0.18)) { showTake = true } } label: {
-            Label("结果", systemImage: "chart.bar.doc.horizontal").fixedSize()
+        Button { withAnimation(T.anim) { showTake = true } } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                Text("结果")
+                // 带上分数，一眼知道上一遍念得怎么样
+                if let d = rec.diff {
+                    Text("\(d.overall)").font(.system(size: T.f1, weight: .bold)).monospacedDigit()
+                }
+            }
+            .fixedSize()
+            .font(.system(size: T.f2, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 11).frame(height: 38)
+            .background(rec.diff.map { T.Score.of($0.overall) } ?? Color.accentColor)
+            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
         }
-        .buttonStyle(LabelButton(on: true))
+        .buttonStyle(.plain)
     }
 
     /// 跟读结果。横屏高度是宝贵资源，所以**不给它单独的标题栏**：
@@ -881,7 +901,7 @@ struct DrillScreen: View {
         return v >= 75 ? .green : (v >= 55 ? .orange : .red)
     }
 
-    private var gradeRow: some View { gradeRow(40) }
+    private var gradeRow: some View { gradeRow(34) }
     /// 横屏高度紧张，打分行矮一档（40）；竖屏还是 48
     private func gradeRow(_ h: CGFloat) -> some View {
         HStack(spacing: T.gap) {
@@ -890,7 +910,7 @@ struct DrillScreen: View {
         }
         .padding(.horizontal, T.side).padding(.bottom, 4)
     }
-    private func grade(_ q: Int, _ t: String, _ c: Color, _ h: CGFloat = 40) -> some View {
+    private func grade(_ q: Int, _ t: String, _ c: Color, _ h: CGFloat = 34) -> some View {
         Button {
             Task {
                 guard let s = store.current else { return }
@@ -903,14 +923,15 @@ struct DrillScreen: View {
                 if autoNext { step(1) }
             }
         } label: {
-            // 这四个键一次只按一下，不用做得那么大 —— 省下的高度给波形和跟读结果
-            Text(t).font(.system(size: h < 38 ? 14 : 15, weight: .semibold))
-                .lineLimit(1).minimumScaleFactor(0.75)
+            // 字号保持看得清（15/16），压的是**块本身**：高度和留白。
+            // 这四个键一次只按一下，色块做那么大反而喧宾夺主。
+            Text(t).font(.system(size: h < 34 ? 15 : 16, weight: .semibold))
+                .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, minHeight: h)
                 .foregroundStyle(c)
-                .background(c.opacity(0.14))
+                .background(c.opacity(0.10))
                 .overlay(RoundedRectangle(cornerRadius: T.ctl, style: .continuous)
-                    .stroke(c.opacity(0.45), lineWidth: 1.2))
+                    .stroke(c.opacity(0.30), lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
         }
         .buttonStyle(.plain)

@@ -45,7 +45,8 @@ targets:
         CFBundleDisplayName: 听说训练台
         CFBundleShortVersionString: "1.0"
         UIBackgroundModes: [audio]             # 锁屏继续放音
-        NSMicrophoneUsageDescription: 录下你的跟读，跟原声比对打分。录音只发到你自己的服务器。
+        NSMicrophoneUsageDescription: 录下你的跟读，跟原声比对打分。录音只留在这台手机上，不会上传。
+        NSSpeechRecognitionUsageDescription: 把你的跟读听写成文字，好告诉你哪个词念得不像。全程在这台手机上完成，不联网、不上传。
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true         # 自签证书的局域网服务器
         UILaunchScreen: {}

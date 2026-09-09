@@ -181,21 +181,25 @@ final class Recorder: NSObject, ObservableObject {
             message = "逐词比对需要 iOS 17 以上"
         }
 
-        // 机器听写：本机 whisper，录音只在自己家里流转
-        if let wav = try? Data(contentsOf: fileURL), let en = sentence?.en {
+        // 机器听写：用 iOS 自带的离线识别（比服务器那个 base.en 准得多，
+        // 而且不联网、录音不出手机）。它只是佐证"机器听成了什么"，
+        // 真正有用的是上面的逐词比对。
+        if let en = sentence?.en {
             do {
-                let text = try await Api.recognize(wav: wav)
+                let text = try await Speech.shared.transcribe(fileURL)
                 heard = text
                 let (attr, wrong, acc) = compare(ref: en, hyp: text)
                 heardAttributed = attr; wrongWords = wrong
-                score = Score(words: acc, tone: g.tone, rhythm: g.rhythm)
+                // 有逐词比对时以它的分数为准（那个更靠谱），没有才用听写算的
+                if diff == nil { score = Score(words: acc, tone: g.tone, rhythm: g.rhythm) }
+                // 录音本身不上传 —— 只把分数和听写结果同步给服务器做进度统计。
+                // 录音永远只留在手机上，这一条是这个 App 对用户的承诺。
                 if let src = sentence?.src {
-                    await Api.uploadRec(src, data: wav, ext: "wav",
-                                        score: Double(score?.overall ?? 0), heard: text,
-                                        dur: Double(mine.count) / 16000)
+                    await Api.uploadRecMeta(src, score: Double(score?.overall ?? 0),
+                                            heard: text, dur: Double(mine.count) / 16000)
                 }
             } catch {
-                message = "听写服务没连上（曲线对比不受影响）"
+                if diff == nil { message = "听写没跑成：\(error.localizedDescription)" }
             }
         }
     }
