@@ -146,7 +146,12 @@ final class DB {
         }
     }
 
-    var version: Int { (try? q.sync { h.map { try Self.scalarInt($0, "PRAGMA user_version") } ?? 0 }) ?? 0 }
+    var version: Int {
+        (try? q.sync { () throws -> Int in
+            guard let h else { return 0 }
+            return try Self.scalarInt(h, "PRAGMA user_version")
+        }) ?? 0
+    }
 
     // MARK: 执行与查询
 
