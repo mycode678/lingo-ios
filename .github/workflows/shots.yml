@@ -8,6 +8,12 @@ on:
     paths: ["ios/**", ".github/workflows/shots.yml"]
   workflow_dispatch:
 
+# 一次只留最新那一轮：连着推几个提交时，前面还在跑的直接取消。
+# 不然每推一次就来一封失败邮件，而那些失败往往是下一个提交已经修掉的旧错误。
+concurrency:
+  group: g0-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   shots:
     runs-on: macos-14
