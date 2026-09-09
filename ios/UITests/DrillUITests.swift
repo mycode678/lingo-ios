@@ -291,6 +291,7 @@ final class DBUITests: XCTestCase {
         XCTAssertEqual(val(a, "dbIdempotent"), "一样，OK", "迁移跑两遍结果不一样")
         XCTAssertEqual(val(a, "dbTables"), "八张都在", "表结构不对")
         XCTAssertEqual(val(a, "dbSchedule"), "OK", "本地复习排期算错了")
+        XCTAssertEqual(val(a, "dbFavMark"), "OK", "本地收藏/难点不对")
         XCTAssertEqual(val(a, "dbText"), "OK", "中文存取串了")
         XCTAssertEqual(val(a, "dbWrote"), "写好了", "没写进去")
         a.terminate()

@@ -130,7 +130,16 @@ final class DrillModel: ObservableObject {
         do {
             try await Player.shared.load(src: s.src)
             view = (0, Player.shared.duration)
-            marks = (try? await Api.marks(s.src)) ?? []
+            // 难点从本机读。本机没有才去服务器要一次并落地（老账号搬家）。
+            let local = PracticeService.shared.marks(s.src)
+            if !local.isEmpty {
+                marks = local.map { .init(id: nil, s: $0.0, e: $0.1) }
+            } else {
+                marks = (try? await Api.marks(s.src)) ?? []
+                if !marks.isEmpty {
+                    PracticeService.shared.setMarks(s.src, marks.map { ($0.s, $0.e) })
+                }
+            }
             do {
                 words = Self.padOnsets(try await Api.align(s.src),
                                        duration: Player.shared.duration)
@@ -220,6 +229,8 @@ final class DrillModel: ObservableObject {
             marks.append(.init(id: nil, s: a, e: b))
             marks.sort { $0.s < $1.s }
         }
+        // 本机说了算，服务器只是顺手备份
+        PracticeService.shared.setMarks(src, marks.map { ($0.s, $0.e) })
         try? await Api.setMarks(src, marks)
     }
     func nextMark() {

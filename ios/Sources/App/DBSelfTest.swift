@@ -53,6 +53,19 @@ struct DBSelfTest: View {
             out.append(("dbTables", "表",
                         tabs == want ? "八张都在" : "对不上：\(tabs.joined(separator: ","))"))
 
+            // ⑦ 收藏和难点也走本机
+            let ps2 = PracticeService(db: db)
+            ps2.setFav("selftest/fav", true)
+            let favOK = ps2.isFav("selftest/fav")
+            ps2.setFav("selftest/fav", false)
+            let unfavOK = !ps2.isFav("selftest/fav")
+            ps2.setMarks("selftest/mk", [(1.0, 1.5), (2.0, 2.4)])
+            ps2.setMarks("selftest/mk", [(1.0, 1.5)])          // 整组覆盖，不许留旧的
+            let mk = ps2.marks("selftest/mk")
+            out.append(("dbFavMark", "收藏与难点",
+                        favOK && unfavOK && mk.count == 1 && abs(mk[0].1 - 1.5) < 1e-9
+                        ? "OK" : "不对 fav=\(favOK)/\(unfavOK) marks=\(mk.count)"))
+
             if write {
                 // ③ 写一条进度（这一趟只写，写完测试会杀掉 App）
                 try db.run("""

@@ -72,6 +72,8 @@ struct DrillScreen: View {
     /// 这一句打过哪一档（换句就清空）。点完要看得见，不然不知道打没打过。
     @State private var graded: Int?
     private let practice = PracticeService.shared
+    /// 这次会话里本机改过收藏的句子（本机取消了收藏，服务器那份还写着 1，别让它盖回来）
+    @State private var favTouched: Set<String> = []
     @State private var probeBar = false          // -probe：真机测试用的后门按钮排
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
@@ -1319,10 +1321,18 @@ struct DrillScreen: View {
 
     private func face(_ name: String, _ size: Double) -> Font { TX.face(name, size) }
     private func color(_ hex: String) -> Color? { TX.color(hex) }
-    private var isFav: Bool { (store.prog[store.current?.src ?? ""]?.fav ?? 0) == 1 }
+    /// 收藏状态以本机为准（没网也要能收藏）；本机没记过才看服务器那份
+    private var isFav: Bool {
+        guard let src = store.current?.src else { return false }
+        if practice.isFav(src) { return true }
+        return (store.prog[src]?.fav ?? 0) == 1 && !favTouched.contains(src)
+    }
     private func toggleFav() async {
         guard let s = store.current else { return }
-        try? await Api.fav(s.src, !isFav, meta: store.meta(s))
+        let on = !isFav
+        practice.setFav(s.src, on, meta: store.meta(s).mapValues { "\($0)" })
+        favTouched.insert(s.src)      // 这句的收藏已经由本机接管，别再被服务器那份盖回去
+        try? await Api.fav(s.src, on, meta: store.meta(s))   // 顺手备份
         await store.refreshProgress()
     }
     /// 音量＋在机身上面＝上一句，音量−在下面＝下一句。

@@ -128,6 +128,47 @@ final class PracticeService {
         return (try? db.row("SELECT COUNT(*) AS n FROM progress WHERE updated_at >= ?", [start])?["n"] as? Int) as? Int ?? 0
     }
 
+    // MARK: 收藏
+
+    func isFav(_ sentId: String) -> Bool {
+        ((try? db.row("SELECT 1 AS x FROM fav WHERE sent_id=?", [sentId])) ?? nil) != nil
+    }
+
+    func setFav(_ sentId: String, _ on: Bool, meta: [String: String]? = nil) {
+        if on {
+            try? db.run("INSERT OR REPLACE INTO fav(sent_id, at) VALUES(?,?)",
+                        [sentId, Date().timeIntervalSince1970])
+            if let meta { remember(sentId, meta) }
+        } else {
+            try? db.run("DELETE FROM fav WHERE sent_id=?", [sentId])
+        }
+    }
+
+    func favCount() -> Int {
+        (try? db.row("SELECT COUNT(*) AS n FROM fav")?["n"] as? Int) as? Int ?? 0
+    }
+
+    // MARK: 难点（一句里标出来的几段）
+
+    func marks(_ sentId: String) -> [(Double, Double)] {
+        let rows = (try? db.rows("SELECT a, b FROM mark WHERE sent_id=? ORDER BY a", [sentId])) ?? []
+        return rows.compactMap {
+            guard let a = $0["a"] as? Double, let b = $0["b"] as? Double else { return nil }
+            return (a, b)
+        }
+    }
+
+    /// 整句的难点一次写完（先删后插）—— 难点本来就是按句子整组改的，
+    /// 逐条增删要维护 id，没必要。
+    func setMarks(_ sentId: String, _ list: [(Double, Double)]) {
+        try? db.run("DELETE FROM mark WHERE sent_id=?", [sentId])
+        let now = Date().timeIntervalSince1970
+        for (a, b) in list {
+            try? db.run("INSERT INTO mark(sent_id, a, b, note, at) VALUES(?,?,?,'',?)",
+                        [sentId, a, b, now])
+        }
+    }
+
     // MARK: 从服务器搬一次家
     //
     // 老用户（我自己）在服务器上已经攒了进度，第一次跑本地版时搬过来一次。
