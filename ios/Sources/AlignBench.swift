@@ -67,6 +67,12 @@ struct AlignBenchView: View {
             // 80 毫秒以内人耳分辨不出，算通过
             verdict = maxErr <= 80 ? "✅ 通过（最大误差 \(Int(maxErr)) 毫秒）"
                                    : "❌ 不通过（最大误差 \(Int(maxErr)) 毫秒）"
+            // 打到控制台，从 Mac 上用 devicectl --console 直接读，
+            // 比从 .xcresult 里掏附件可靠（新版 xcresulttool 那条路不通了）
+            print("BENCH-BEGIN"); print(summary); print(verdict)
+            rows.forEach { print($0) }
+            print("BENCH-END")
+            fflush(stdout)
         } catch {
             summary = "出错：\(error.localizedDescription)"
             verdict = "❌ 不通过"
