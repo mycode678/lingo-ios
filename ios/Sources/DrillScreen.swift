@@ -39,6 +39,9 @@ struct DrillScreen: View {
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
     @AppStorage("drill.boostHF") private var boostHF = true         // 听辅音（高频增强）
+    /// 连播换到下一句时，播整句还是播这句记住的选区。默认整句 ——
+    /// 划过一次选区之后连播就一直只放那一小段，是他最早提的问题。
+    @AppStorage("drill.loopWhole") private var loopWhole = true
     @AppStorage("ui.resultFont") private var resultFont = 17.0      // 跟读结果的字号，用户自己调
     /// 倍速档位自己定：慢到 0.4 快到 2.0，几档也自己定（2~5 档）。
     /// 存成一串逗号分隔的数，简单、好迁移；解析不出来就退回默认四档。
@@ -128,8 +131,11 @@ struct DrillScreen: View {
             await vm.load(s)
             vm.snap = snap
             player.gapIn = gapIn
+            // 连播落到新一句时播多少：整句（默认）还是这句记住的选区。
+            // 这一句只管"刚换过来"这一下；用户自己去划选区、点小句走的是另一条路。
+            let seg = loopWhole ? nil : vm.selection
             player.claim(loop: player.loop, times: loopTimes,
-                         segment: vm.selection,
+                         segment: seg,
                          onEnd: { autoAdvance(after: s.src) })
             player.boostHF = boostHF
             rec.reset()
@@ -151,7 +157,7 @@ struct DrillScreen: View {
             // 但只在**真的换了句子**时才响：从别的页切回精听不该突然出声。
             if autoPlay, autoPlayedSrc != s.src {
                 autoPlayedSrc = s.src
-                player.play(from: vm.selection?.lowerBound ?? 0)
+                player.play(from: seg?.lowerBound ?? 0)
             }
         }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
@@ -240,6 +246,43 @@ struct DrillScreen: View {
                     .buttonStyle(LabelButton())
                 }
 
+                // 倍速紧跟在「铺满」后面 —— 他给的高频顺序是
+                // 播/停、录/停、整句、铺满、几个倍速、显示、听感，
+                // 原来倍速甩在最右边，得横滑到底才够得着。
+                ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
+                    rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001, w: 52,
+                             tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
+                             hold: { editRate = i })
+                }
+                rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
+                         on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001, w: 52,
+                         tap: {
+                             if customRate > 0 { player.rate = Float(customRate)
+                                                 if player.isPlaying { player.play() } }
+                             else { editRate = -1 }
+                         },
+                         hold: { editRate = -1 })
+
+                showMenu                                   // 显示
+
+                // 听感也在他那份高频清单里，原来沉在 ⋯ 菜单第二层
+                Label("听感", systemImage: boostHF ? "ear.badge.waveform" : "ear")
+                    .fixedSize()
+                    .font(.system(size: 12))
+                    .foregroundStyle(boostHF ? Color.accentColor : Color.primary.opacity(0.7))
+                    .padding(.horizontal, 9).frame(height: 38)
+                    .background(boostHF ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        boostHF.toggle()
+                        showHint(boostHF ? "把句尾的 t、s、k 这些辅音抬亮了，连读听得清"
+                                         : "关了，恢复原声", 2.5)
+                    }
+                    .accessibilityElement()
+                    .accessibilityLabel("听感")
+                    .accessibilityAddTraits(.isButton)
+
                 LoopButton(player: player, times: loopTimes,
                            onToggle: { player.loop.toggle(); player.loop ? player.play() : player.pause() },
                            onHold: { showLoop = true })
@@ -261,7 +304,6 @@ struct DrillScreen: View {
                     .accessibilityAddTraits(.isButton)
 
                 gapChip
-                showMenu
 
                 // 音量键：走路时屏幕黑着全靠它，开没开要一眼看得见
                 Button {
@@ -275,7 +317,6 @@ struct DrillScreen: View {
 
                 Menu {
                     Button { showWalk = true } label: { Label("随身模式", systemImage: "headphones") }
-                    Toggle("听辅音（更清楚）", isOn: $boostHF)
                     Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
                     Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
                     Divider()
@@ -290,19 +331,6 @@ struct DrillScreen: View {
                         .frame(width: 40, height: 38)
                 }
 
-                ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
-                    rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001, w: 52,
-                             tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
-                             hold: { editRate = i })
-                }
-                rateChip(customRate > 0 ? rateLabel(customRate) : "自定",
-                         on: customRate > 0 && abs(Double(player.rate) - customRate) < 0.001, w: 52,
-                         tap: {
-                             if customRate > 0 { player.rate = Float(customRate)
-                                                 if player.isPlaying { player.play() } }
-                             else { editRate = -1 }
-                         },
-                         hold: { editRate = -1 })
             }
             .padding(.horizontal, T.side)
         }
@@ -1028,6 +1056,17 @@ struct DrillScreen: View {
         NavigationStack {
             Form {
                 Section {
+                    Picker("连播时播", selection: $loopWhole) {
+                        Text("整句").tag(true)
+                        Text("我划的选区").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text("选「整句」：换到下一句就从头放整句。\n"
+                         + "选「我划的选区」：这句以前划过哪一段，连播过来就只放那一段，"
+                         + "适合把几句里同一个难点连着抠。")
+                }
+                Section {
                     numberRow("同一段两遍之间", $gapIn, 0...6, "秒", step: 0.2)
                     numberRow("换下一句之前", $gapOut, 0...6, "秒", step: 0.2)
                 } footer: {
@@ -1035,12 +1074,12 @@ struct DrillScreen: View {
                          + "跟不上就调长，顺了就调短。0 就是不停顿，一遍接一遍。")
                 }
             }
-            .navigationTitle("播放间隔")
+            .navigationTitle("连播")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
                 Button("完成") { showGap = false } } }
         }
-        .presentationDetents([.height(260)])
+        .presentationDetents([.height(400)])
     }
 
     private var rateSheet: some View {
@@ -1086,35 +1125,28 @@ struct DrillScreen: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
+                // 这一屏只放"底下那排够不着"的东西。
+                // 凡是主界面已经有按钮的（连播、循环、倍速、间隔、听感、显示、音量键），
+                // 这里一律不再重复摆一遍开关，只留一句话指路。
                 Section("播放") {
                     Toggle("切到一句就自动播放", isOn: $autoPlay)
-                    Toggle("一段播完自动下一句", isOn: $autoNext)
-                    numberRow("同一段两遍之间", $gapIn, 0...6, "秒", step: 0.2)
-                    numberRow("换下一句之前", $gapOut, 0...6, "秒", step: 0.2)
-                    Picker("循环遍数", selection: $loopTimes) {
-                        Text("一直循环").tag(0)
-                        ForEach([2, 3, 5, 10], id: \.self) { Text("\($0) 遍").tag($0) }
-                    }
                 }
                 Section {
+                    Text("连播 / 连播时播整句还是选区 / 换句停多久：底部「连播」长按")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("循环几遍：底部循环那个牌子长按")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                     Text("倍速：底部那一排长按任意一档就能改")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
-                    Text("间隔：底部 ⏱ 那个牌子点一下就能改")
+                    Text("听感（听辅音）：底部「听感」点一下")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-                Section {
-                    Toggle("音量键切上下句", isOn: $volKeys)
-                } header: { Text("音量键") } footer: {
-                    Text("音量＋（上面那个）＝上一句，音量−（下面那个）＝下一句；按完音量会自动复位，离开这一屏自动还给系统。")
-                }
+                    Text("音量键切上下句：底部那个小喇叭点一下\n"
+                         + "音量＋＝上一句，音量−＝下一句；按完音量自动复位，离开这一屏还给系统。")
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                } header: { Text("这些在底下那排上") }
                 Section("选区") {
                     Toggle("拖动时吸到词边", isOn: $snap)
                     Toggle("记住每句的选区", isOn: $vm.rememberSelection)
-                }
-                Section {
-                    Toggle("听辅音（高频增强）", isOn: $boostHF)
-                } header: { Text("听感") } footer: {
-                    Text("把 2.5kHz 以上抬高一点，句尾的 t/s/k 这些辅音会清楚很多，专抠连读用。")
                 }
                 Section {
                     Toggle("录完自动对比播放", isOn: $autoAB)
