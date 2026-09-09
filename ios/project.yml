@@ -9,6 +9,10 @@ options:
   createIntermediateGroups: true
 settings:
   base:
+    # 真机测试用他的个人团队（免费账号，证书 7 天有效，够跑测试）。
+    # 云端出 .ipa 时会传 CODE_SIGNING_ALLOWED=NO 覆盖掉，不受影响。
+    DEVELOPMENT_TEAM: 38H3762BC6
+    CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.9"
