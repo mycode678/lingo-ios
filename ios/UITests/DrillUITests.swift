@@ -213,6 +213,10 @@ final class AlignerUITests: XCTestCase {
         // App 里跑完会把结果打在屏幕上（-alignbench 专用的一屏）
         let result = app.staticTexts["alignResult"]
         XCTAssertTrue(result.waitForExistence(timeout: 120), "对齐没跑出结果")
+        // 把数字写进测试报告，不然只看到"通过"看不到误差多少
+        let att = XCTAttachment(string: "【对齐验证】" + result.label)
+        att.name = "对齐验证结果"; att.lifetime = .keepAlways
+        add(att)
         print("【对齐验证】" + result.label)
         // 屏幕上会写 "最大误差 xx 毫秒"，超过 80 毫秒就算不合格
         let ok = app.staticTexts["alignVerdict"]
