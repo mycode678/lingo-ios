@@ -1,6 +1,6 @@
 # 云端跑 iOS 模拟器，自动截图 —— 相当于网页那边的 headless Chrome。
 # 改完布局先看这些图，别让人肉眼替我 debug。
-name: screenshots
+name: G0 验证（模拟器）
 
 on:
   push:
@@ -14,6 +14,12 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+
+      # 隐私红线：方案里用户的原话是"录音在用户自己的手机上，服务器不碰"。
+      # 只要 App 代码里重新出现上传录音的路径，这一步就红 —— 放最前面，编译都不用等。
+      - name: 隐私红线守卫
+        run: ios/guard-privacy.sh
+
       - name: 选 Xcode 16
         run: sudo xcode-select -s /Applications/Xcode_16.1.app
       - name: 装 XcodeGen
@@ -109,9 +115,12 @@ jobs:
           UDID=$(xcrun simctl list devices available | grep -m1 "iPhone 15 Pro Max (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
           echo "在 $UDID 上跑交互测试"
           set -o pipefail
+          # 对齐验证跳过：它要 181M 的 CoreML 模型，模型不进仓库（超 GitHub 单文件上限），
+          # 那条只在接了真机的 Mac 上跑。
           xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
             -destination "platform=iOS Simulator,id=$UDID" \
             -only-testing:LingoUITests \
+            -skip-testing:LingoUITests/AlignerUITests \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee /tmp/test.log \
             | grep -E "Test Case|error:|\*\* TEST" | tail -40
           # 失败时把真正的原因贴出来（只 grep "Test Case" 会把编译错、崩溃原因全滤掉）
@@ -119,7 +128,16 @@ jobs:
           grep -E "error:|Failing tests|crashed|could not be launched" /tmp/test.log | sort -u | head -20 || true
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: screenshots
           path: ios/shots/*.png
+          retention-days: 14
+
+      # 体检报告也要能拿回来看 —— 光看截图估不准高度，得看真数字
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-logs
+          path: ios/audit-*.log
           retention-days: 14
