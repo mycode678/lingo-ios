@@ -618,13 +618,22 @@ struct DrillScreen: View {
                     Label("我的", systemImage: "person.wave.2").fixedSize()
                 }
                 .buttonStyle(LabelButton())
-                if let sc = rec.score {
+                // 分项在下面的比对面板里（音准/节奏/连读），这儿只留总分，
+                // 免得两套数字并排打架
+                if rec.diff == nil, let sc = rec.score {
                     scoreItem("词准", sc.words)
                     scoreItem("语调", sc.tone)
                     scoreItem("节奏", sc.rhythm)
                 }
                 Spacer(minLength: 0)
-                if let sc = rec.score {
+                if let d = rec.diff {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("\(d.overall)")
+                            .font(.system(size: 24, weight: .bold)).monospacedDigit()
+                            .foregroundStyle(T.Score.of(d.overall))
+                        Text("分").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                } else if let sc = rec.score {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("\(sc.overall)")
                             .font(.system(size: 24, weight: .bold)).monospacedDigit()
@@ -805,13 +814,19 @@ struct DrillScreen: View {
             // 逐词比对（手机上现算的）—— 有它就以它为主，它比听写文本有用得多
             if let d = rec.diff {
                 CompareView(diff: d)
-                Divider()
             }
+            // 机器听写只是佐证："它听成了什么"。有逐词比对时降级成一行小字。
             if let h = rec.heard, !h.isEmpty {
-                Text(rec.heardAttributed).font(.system(size: 15))
-                if !rec.wrongWords.isEmpty {
-                    Text("问题词：" + rec.wrongWords.joined(separator: " / "))
-                        .font(.system(size: 12)).foregroundStyle(.orange)
+                if rec.diff != nil {
+                    Text("机器听成：" + h)
+                        .font(.system(size: T.f1)).foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                } else {
+                    Text(rec.heardAttributed).font(.system(size: 15))
+                    if !rec.wrongWords.isEmpty {
+                        Text("问题词：" + rec.wrongWords.joined(separator: " / "))
+                            .font(.system(size: 12)).foregroundStyle(.orange)
+                    }
                 }
             }
             if let c = rec.curve {
