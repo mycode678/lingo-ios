@@ -246,6 +246,33 @@ struct DrillScreen: View {
                 gapChip
                 showMenu
 
+                // 音量键：走路时屏幕黑着全靠它，开没开要一眼看得见
+                Button {
+                    volKeys.toggle()
+                    showHint(volKeys ? "已经可以用音量键切上下句了\n＋上一句　−下一句"
+                                     : "关了，音量键现在只调音量", 3.5)
+                } label: {
+                    Image(systemName: volKeys ? "speaker.wave.2.fill" : "speaker.wave.2")
+                }
+                .buttonStyle(IconButton(on: volKeys))
+
+                Menu {
+                    Button { showWalk = true } label: { Label("随身模式", systemImage: "headphones") }
+                    Toggle("听辅音（更清楚）", isOn: $boostHF)
+                    Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
+                    Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
+                    Divider()
+                    // 横屏藏了标签栏，这里给条路回去
+                    Button { Nav.shared.tab = 0 } label: { Label("今天", systemImage: "sun.max") }
+                    Button { Nav.shared.tab = 1 } label: { Label("找材料", systemImage: "books.vertical") }
+                    Button { Nav.shared.tab = 3 } label: { Label("我的", systemImage: "person") }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: T.f3))
+                        .foregroundStyle(Color.primary.opacity(0.55))
+                        .frame(width: 40, height: 38)
+                }
+
                 ForEach(Array(rates.enumerated()), id: \.offset) { i, r in
                     rateChip(rateLabel(r), on: abs(r - nearestRate) < 0.001, w: 52,
                              tap: { player.rate = Float(r); if player.isPlaying { player.play() } },
@@ -302,6 +329,13 @@ struct DrillScreen: View {
         anyText ? min(cardIdeal, total * 0.35) : 0
     }
 
+    /// 横屏的波形高度：按屏高比例，不写死数字 ——
+    /// 写死 210 在 SE（横屏才 375 高）上就把别的挤没了，在 iPad 上又浪费。
+    ///   SE 375 → 195    11 Pro Max 414 → 215    iPad 1024 → 封顶 260
+    private func waveH(_ total: CGFloat) -> CGFloat {
+        min(max(total * 0.52, 150), 260)
+    }
+
     private func landscape(_ s: Api.Sentence, _ geo: GeometryProxy) -> some View {
         // 这些常数都是体检（-audit）量出来的实际值，不是拍脑袋估的：
         // 顶栏内部写死 38；横屏控制条 44、打分 38＋6 内边距＝44。
@@ -310,9 +344,9 @@ struct DrillScreen: View {
             // 上半截单独一层：跟读结果只浮在这一截上，不许盖住下面的控制条，
             // 也不许盖满波形（盖住就没法圈选区）。
             VStack(spacing: 4) {
-                header.auditBlock("顶栏")
-                waveBlock                                   // 唯一的弹性件
-                    .frame(minHeight: 60, maxHeight: .infinity)
+                // 横屏波形固定高度，谁也别想挤它 —— 这是横屏存在的理由
+                waveBlock
+                    .frame(height: waveH(geo.size.height))
                     .padding(.horizontal, T.side).auditBlock("波形")
                 VStack(spacing: 4) {
                     selectionBar(30).auditBlock("选区条")
@@ -361,7 +395,6 @@ struct DrillScreen: View {
         // 同上，实测：控制条 44＋上下内边距＝58，打分 48＋6＝54＋行距＝60
         let cardHeight = cardH(geo.size.height)
         return VStack(spacing: 0) {
-            header.auditBlock("顶栏")
             probeButtons
             VStack(spacing: 8) {
                 waveBlock                                   // 唯一的弹性件
@@ -432,79 +465,53 @@ struct DrillScreen: View {
         }
     }
 
-    /// 顶栏只回答一个问题："我现在在练哪个词的第几句"。
-    /// 常用的切句、选句子一律不放这儿 —— 6.5 寸屏单手够不到顶部，
-    /// 走路时更别提。它们在底部拇指区，见 transport。
-    private var header: some View {
-        HStack(spacing: 2) {
-            Button { showList = true } label: {
-                HStack(spacing: 5) {
-                    Text(store.word).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    Text("\(store.index + 1)/\(store.items.count)")
-                        .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
-                    Image(systemName: "chevron.down").font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    if vm.loading { ProgressView().controlSize(.mini) }
-                }
-                .padding(.horizontal, 6).frame(height: 34)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Spacer(minLength: 0)
-
-            // 音量键切句：单独一个开关摆在这儿，别藏菜单里 ——
-            // 走路时屏幕黑着，全靠它；开没开必须一眼看得见。
-            Button {
-                volKeys.toggle()
-                showHint(volKeys ? "已经可以用音量键切上下句了\n＋上一句　−下一句"
-                                 : "关了，音量键现在只调音量", 3.5)
-            } label: {
-                Image(systemName: volKeys ? "speaker.wave.2.fill" : "speaker.wave.2")
-            }
-            .buttonStyle(IconButton(on: volKeys))
-
-            Button { showWalk = true } label: { Image(systemName: "headphones") }
-                .buttonStyle(IconButton())
-            Menu {
-                Button { showStyle = true } label: { Label("原文样式", systemImage: "textformat") }
-                Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
-                Divider()
-                // 横屏把标签栏藏了，这里给条路回去
-                Button { Nav.shared.tab = 0 } label: { Label("今天", systemImage: "sun.max") }
-                Button { Nav.shared.tab = 1 } label: { Label("找材料", systemImage: "books.vertical") }
-                Button { Nav.shared.tab = 3 } label: { Label("我的", systemImage: "person") }
-                Toggle("听辅音（更清楚）", isOn: $boostHF)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.primary.opacity(0.55))
-                    .frame(width: 40, height: 34)
-            }
-        }
-        .padding(.horizontal, T.side - 4)
-        .frame(height: 38)
+    /// 波形。原来下面挂着一行"选区 1.43–1.89s"，白占 18 点高度 ——
+    /// 那是信息不是操作，改成浮在波形四角上，一点高度都不占。
+    private var waveBlock: some View {
+        WaveView(vm: vm)
+            .clipShape(RoundedRectangle(cornerRadius: T.card, style: .continuous))
+            .overlay(alignment: .topLeading) { corner(leading) }
+            .overlay(alignment: .topTrailing) { corner(trailing) }
     }
 
-    private var waveBlock: some View {
-        VStack(spacing: 4) {
-            WaveView(vm: vm)
-                .frame(maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: T.card, style: .continuous))
-            HStack(spacing: 8) {
-                if let sel = vm.selection {
-                    Text(String(format: "选区 %.2f–%.2fs", sel.lowerBound, sel.upperBound))
-                        .monospacedDigit().foregroundStyle(Color.accentColor)
-                }
-                if !vm.marks.isEmpty { Text("难点\(vm.marks.count)").foregroundStyle(.red) }
-                Spacer(minLength: 0)
-                if let t = flash { Text(t).foregroundStyle(.secondary).lineLimit(1) }
-                else if !vm.note.isEmpty { Text(vm.note).foregroundStyle(.secondary).lineLimit(1) }
+    /// 左上角：在练哪个词第几句（顶栏拆掉之后这个信息挪到这儿）
+    @ViewBuilder private var leading: some View {
+        Button { showList = true } label: {
+            HStack(spacing: 4) {
+                Text(store.word).font(.system(size: T.f2, weight: .semibold)).lineLimit(1)
+                Text("\(store.index + 1)/\(store.items.count)")
+                    .font(.system(size: T.f1)).monospacedDigit().opacity(0.7)
+                if vm.loading { ProgressView().controlSize(.mini) }
             }
-            .font(.system(size: 11))
-            .padding(.horizontal, 10)
-            .frame(height: 14)
         }
+        .buttonStyle(.plain)
+    }
+
+    /// 右上角：选区秒数、难点数、临时提示
+    @ViewBuilder private var trailing: some View {
+        HStack(spacing: T.s2) {
+            if let t = flash {
+                Text(t).lineLimit(1)
+            } else if !vm.note.isEmpty {
+                Text(vm.note).lineLimit(1)
+            }
+            if !vm.marks.isEmpty {
+                Label("\(vm.marks.count)", systemImage: "flag.fill").foregroundStyle(.red)
+            }
+            if let sel = vm.selection {
+                Text(String(format: "%.2f–%.2fs", sel.lowerBound, sel.upperBound))
+                    .monospacedDigit().foregroundStyle(Color.accentColor)
+            }
+        }
+        .font(.system(size: T.f1))
+    }
+
+    /// 角标统一外观：半透明底衬，压在波形上也看得清
+    private func corner<V: View>(_ content: V) -> some View {
+        content
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(6)
     }
 
     /// 放不下就横向滚，绝不撑宽整屏
