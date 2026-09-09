@@ -341,7 +341,11 @@ final class WaveUIView: UIView {
             ctx.strokePath()
             let s = NSAttributedString(string: String(format: step < 1 ? "%.1fs" : "%.0fs", tt),
                 attributes: [.font: UIFont.systemFont(ofSize: 10), .foregroundColor: C.rulerInk])
-            s.draw(at: CGPoint(x: xx - s.size().width / 2, y: laneBot + 5))
+            // 居中画会让最左最右那个数字被卡片边缘切掉半截（"0s" 看着像 ")s"），
+            // 所以把它推回可见范围里
+            let lw = s.size().width
+            let lx = min(max(xx - lw / 2, 2), W - lw - 2)
+            s.draw(at: CGPoint(x: lx, y: laneBot + 5))
             tt += step
         }
 

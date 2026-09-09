@@ -485,9 +485,13 @@ struct DrillScreen: View {
             // 小句固定在最底下这组的正上方 —— 位置永远不随文字多少变，闭着眼也能点
             chunkStrip.auditBlock("小句")
             gradeRow.auditBlock("打分")
+                .padding(.top, 6)          // 原来跟小句贴在一起，两行糊成一块
             transport.auditBlock("控制条")
         }
         .frame(maxWidth: .infinity)
+        // 分组背景：卡片是白的，底也得比白深一点，卡片才是卡片。
+        // 原来底和卡同色，原文卡等于隐形，下半屏看着就是一片没来由的空白。
+        .background(Color(.systemGroupedBackground))
     }
 
     /// 测试后门：把"耳机/锁屏/音量键"这些没法用代码按的动作，做成看得见点得到的按钮。
@@ -908,6 +912,12 @@ struct DrillScreen: View {
                     }
                     .padding(.horizontal, T.side)
                 }
+                // 右边缘渐隐：不加的话最后一块被一刀切平，看着像渲染坏了，
+                // 也看不出"还能往右滑"
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0),
+                                             .init(color: .black, location: 0.93),
+                                             .init(color: .black.opacity(0), location: 1)],
+                                     startPoint: .leading, endPoint: .trailing))
             }
         }
         .frame(height: 44)
