@@ -3,6 +3,8 @@ import SwiftUI
 /// 复习：今天到期的句子一张张过。
 /// 先**盲听** —— 不给字，逼自己听；听懂了再翻开对照；然后四档打分决定下次什么时候再问你。
 struct ReviewScreen: View {
+    /// 从「今天」全屏弹出来时给个关闭入口；当独立页用时不传
+    var onClose: (() -> Void)? = nil
     @EnvironmentObject var store: Store
     @EnvironmentObject var player: Player
     @State private var queue: [Api.Card] = []
@@ -149,6 +151,11 @@ struct ReviewScreen: View {
                         Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
                     }
                 }
+                if let onClose {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("完成") { player.pause(); onClose() }
+                    }
+                }
             }
             .task { await load() }
             .sheet(isPresented: $showStyle) { StyleSheet() }
@@ -220,7 +227,7 @@ struct ReviewScreen: View {
             player.pause()
             if let w = c.word, store.word != w { await store.look(w) }
             if let idx = store.items.firstIndex(where: { $0.src == c.src }) { store.index = idx }
-            Nav.shared.tab = 1                     // 真的跳到精听台
+            Nav.shared.tab = 2                     // 真的跳到精听台
         }
     }
 }

@@ -471,9 +471,9 @@ struct DrillScreen: View {
                 Button { showMore = true } label: { Label("精听设置", systemImage: "slider.horizontal.3") }
                 Divider()
                 // 横屏把标签栏藏了，这里给条路回去
-                Button { Nav.shared.tab = 0 } label: { Label("去查词", systemImage: "magnifyingglass") }
-                Button { Nav.shared.tab = 2 } label: { Label("去复习", systemImage: "arrow.triangle.2.circlepath") }
-                Button { Nav.shared.tab = 3 } label: { Label("我的库", systemImage: "books.vertical") }
+                Button { Nav.shared.tab = 0 } label: { Label("今天", systemImage: "sun.max") }
+                Button { Nav.shared.tab = 1 } label: { Label("找材料", systemImage: "books.vertical") }
+                Button { Nav.shared.tab = 3 } label: { Label("我的", systemImage: "person") }
                 Toggle("听辅音（更清楚）", isOn: $boostHF)
             } label: {
                 Image(systemName: "ellipsis.circle")
