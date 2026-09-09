@@ -53,6 +53,7 @@ struct DrillScreen: View {
     @State private var editRate: Int?           // 正在改第几档速度（-1＝那个自定义档）
     @State private var showLoop = false         // 循环遍数面板
     @State private var showTake = true          // 跟读结果这块开着没（往下滑收起）
+    @State private var probeBar = false          // -probe：真机测试用的后门按钮排
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
     /// 不能用 flash：换句子时 .task 会把 flash 清掉，提示还没看见就没了。
@@ -130,6 +131,7 @@ struct DrillScreen: View {
             wireVolumeKeys()
             wireNowPlaying(s)
             if Demo.on && Demo.take { rec.demoTake() }      // 截图用：假装刚录完
+            if Demo.probe { probeBar = true }               // 真机测试用的那排后门按钮
             // 截图用：-sheet list|gap|rate 启动就把对应面板打开（抽屉里的布局也要验）
             if Demo.on, let sh = Demo.sheet {
                 switch sh {
@@ -360,6 +362,7 @@ struct DrillScreen: View {
         let cardHeight = cardH(geo.size.height)
         return VStack(spacing: 0) {
             header.auditBlock("顶栏")
+            probeButtons
             VStack(spacing: 8) {
                 waveBlock                                   // 唯一的弹性件
                     .frame(minHeight: 60, maxHeight: .infinity)
@@ -395,6 +398,22 @@ struct DrillScreen: View {
             transport.auditBlock("控制条")
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// 测试后门：把"耳机/锁屏/音量键"这些没法用代码按的动作，做成看得见点得到的按钮。
+    /// 只在 -demo -probe 下出现，正式包里根本不会渲染。
+    @ViewBuilder private var probeButtons: some View {
+        if probeBar {
+            HStack(spacing: 6) {
+                Button("probe-vol-up") { VolumeKeys.shared.onUp?() }
+                Button("probe-vol-down") { VolumeKeys.shared.onDown?() }
+                Button("probe-remote-next") { NowPlaying.shared.onNext?() }
+                Button("probe-remote-prev") { NowPlaying.shared.onPrev?() }
+                Button("probe-remote-toggle") { NowPlaying.shared.onToggle?() }
+            }
+            .font(.system(size: 9))
+            .frame(height: 18)
+        }
     }
 
     /// 屏幕中间那句浮字（切句提示、音量键开关提示）

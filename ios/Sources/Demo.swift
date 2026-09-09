@@ -19,6 +19,11 @@ enum Demo {
     /// 模拟器转不了屏，截横屏只能这么来：按横屏的宽高渲染，再整体转 90 度。
     /// 布局算的是"宽比高大就走横屏那套"，这样验出来的尺寸跟真机横屏一致。
     static var land: Bool { ProcessInfo.processInfo.arguments.contains("-land") }
+    /// -probe：打开测试后门（只在 -demo 下有效）。
+    /// 真机上没法用代码按物理音量键、也没法替 AirPods 点两下，
+    /// 但这些动作最终都汇到同一处代码。后门就是从内部触发那处代码，
+    /// 于是"按了之后会怎样"能自动验，不用人拿着手机配合。
+    static var probe: Bool { on && ProcessInfo.processInfo.arguments.contains("-probe") }
     /// -audit：布局体检模式 —— 把文字全打开、字号拉大，专门制造"内容最多"的情况
     static var audit: Bool { ProcessInfo.processInfo.arguments.contains("-audit") }
     /// -take：假装刚录完一条，用来截"跟读结果"那块

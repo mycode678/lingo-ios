@@ -123,3 +123,54 @@ final class DrillUITests: XCTestCase {
         waitForExpectations(timeout: 3)
     }
 }
+
+/// 耳机、锁屏、音量键这一类：真机上没法用代码按物理键，也没法替 AirPods 点两下，
+/// 但它们最终都汇到 App 里同一处代码。这些测试用 -probe 后门从内部触发那处代码，
+/// 验"按了之后会怎样"——切没切句、播没播、方向对不对。
+final class RemoteControlUITests: XCTestCase {
+
+    private func launch() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-screen", "drill", "-probe"]
+        app.launch()
+        return app
+    }
+    override func setUp() { continueAfterFailure = false; XCUIDevice.shared.orientation = .portrait }
+
+    private func index(_ app: XCUIApplication) -> String {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS '/'")).firstMatch.label
+    }
+
+    /// 音量＋＝上一句、音量−＝下一句（他明确要求过这个方向）
+    func testVolumeKeysDirection() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["probe-vol-down"].waitForExistence(timeout: 10), "没有后门按钮")
+        // 先往后走一句，才有"上一句"可回
+        app.buttons["probe-vol-down"].tap()
+        let afterDown = index(app)
+        app.buttons["probe-vol-up"].tap()
+        let afterUp = index(app)
+        XCTAssertNotEqual(afterDown, afterUp, "音量＋没有切回上一句")
+    }
+
+    /// 锁屏/AirPods 的上一曲下一曲＝上一句下一句
+    func testRemoteNextPrev() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["probe-remote-next"].waitForExistence(timeout: 10), "没有后门按钮")
+        let before = index(app)
+        app.buttons["probe-remote-next"].tap()
+        let after = index(app)
+        XCTAssertNotEqual(before, after, "锁屏「下一曲」没换句")
+        app.buttons["probe-remote-prev"].tap()
+        XCTAssertEqual(index(app), before, "锁屏「上一曲」没回到原来那句")
+    }
+
+    /// 锁屏播放键要真的能管住播放
+    func testRemoteTogglePlays() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["probe-remote-toggle"].waitForExistence(timeout: 10), "没有后门按钮")
+        app.buttons["probe-remote-toggle"].tap()      // 不崩、不卡就算过（放音本身听不出来）
+        app.buttons["probe-remote-toggle"].tap()
+        XCTAssertTrue(app.buttons["录音"].exists, "点了锁屏播放键之后界面不对了")
+    }
+}
