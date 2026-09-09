@@ -129,7 +129,13 @@ final class Aligner {
         let blank = 0                             // '-' 是 CTC 的空白符
         let sep = labelIndex["|"] ?? 1            // 词之间的分隔符
 
-        // 目标符号序列：词内是字母，词之间插一个 '|'
+        // 只在"真有声音"的那些帧上对齐。
+        // 输入固定 8 秒，短音频后面补了零；补零那段也算进去的话，
+        // 最后几个词会被推进静音里（实测 course 被推到 7.9 秒，音频才 4 秒）。
+        let usable = max(1, min(frames,
+            Int((Double(audioLen) / Double(inputLen) * Double(frames)).rounded(.up))))
+
+        // 目标符号：词内是字母，词之间一个 '|'
         var tokens: [Int] = []
         var spans: [(word: String, from: Int, count: Int)] = []
         for w in words {
@@ -141,57 +147,84 @@ final class Aligner {
         }
         guard !tokens.isEmpty else { throw Err.noAlignableWord }
 
-        // 经典 CTC 强制对齐：状态是"目标序列走到第几个符号"，
-        // 每帧要么停在原地（重复或空白），要么前进一个。
-        let T = frames, S = tokens.count
+        // 标准 CTC 强制对齐：每两个符号之间插一个空白，首尾也各加一个。
+        // 空白让模型可以在静音处"什么都不说"——不插的话首尾的静音会被硬塞给
+        // 第一个和最后一个词（实测 Smith 的起点被拉到 0.00，实际是 0.32）。
+        var ext: [Int] = [blank]
+        var extOfToken = [Int](repeating: 0, count: tokens.count)
+        for (i, tk) in tokens.enumerated() {
+            extOfToken[i] = ext.count
+            ext.append(tk); ext.append(blank)
+        }
+
+        let T = usable, S = ext.count
         let NEG = -Float.greatestFiniteMagnitude / 4
         var prev = [Float](repeating: NEG, count: S)
-        var back = [Bool](repeating: false, count: T * S)   // true＝这一帧前进了一格
+        var from = [UInt8](repeating: 0, count: T * S)   // 0＝原地 1＝退一格 2＝退两格
 
         func lp(_ t: Int, _ v: Int) -> Float { logits[t * V + v] }
 
-        prev[0] = lp(0, tokens[0])
-        if S > 1 { prev[1] = lp(0, tokens[1]) }             // 允许从第二个符号起步
+        prev[0] = lp(0, ext[0])
+        if S > 1 { prev[1] = lp(0, ext[1]) }
         var cur = [Float](repeating: NEG, count: S)
 
         for t in 1..<T {
             for s in 0..<S {
-                let stay = prev[s]
-                let move = s > 0 ? prev[s - 1] : NEG
-                let advance = move > stay
-                cur[s] = (advance ? move : stay) + lp(t, tokens[s])
-                back[t * S + s] = advance
+                var best = prev[s]; var pick: UInt8 = 0
+                if s >= 1, prev[s - 1] > best { best = prev[s - 1]; pick = 1 }
+                // 只有非空白、且和前前个符号不同，才允许跳过中间那个空白
+                if s >= 2, ext[s] != blank, ext[s] != ext[s - 2], prev[s - 2] > best {
+                    best = prev[s - 2]; pick = 2
+                }
+                cur[s] = best + lp(t, ext[s])
+                from[t * S + s] = pick
             }
             swap(&prev, &cur)
             for i in 0..<S { cur[i] = NEG }
         }
 
-        // 从终点回溯，得到每个符号占了哪几帧
-        var s = (S > 1 && prev[S - 2] > prev[S - 1]) ? S - 2 : S - 1
-        var frameOf = [Int](repeating: 0, count: S)
-        var scoreOf = [Float](repeating: 0, count: S)
+        // 回溯：记下每一帧走到了哪个符号
+        var s = (S >= 2 && prev[S - 2] > prev[S - 1]) ? S - 2 : S - 1
+        var path = [Int](repeating: 0, count: T)
         var t = T - 1
         while t >= 0 {
-            frameOf[s] = t
-            scoreOf[s] += lp(t, tokens[s])
-            if t > 0 && back[t * S + s] { s = max(0, s - 1) }
+            path[t] = s
+            if t > 0 { s = max(0, s - Int(from[t * S + s])) }
             t -= 1
         }
 
-        // 帧 → 秒。模型每帧覆盖多少秒，用"音频长度 ÷ 帧数"反推最准
+        // 每个符号占了哪几帧 + 这几帧的平均得分
+        var firstFrame = [Int](repeating: -1, count: S)
+        var lastFrame = [Int](repeating: -1, count: S)
+        var scoreSum = [Float](repeating: 0, count: S)
+        var scoreCnt = [Int](repeating: 0, count: S)
+        for t in 0..<T {
+            let s = path[t]
+            if firstFrame[s] < 0 { firstFrame[s] = t }
+            lastFrame[s] = t
+            scoreSum[s] += lp(t, ext[s]); scoreCnt[s] += 1
+        }
+
+        // 帧 → 秒
         let secPerFrame = Double(inputLen) / Double(frames) / sampleRate
         var out: [Word] = []
         for sp in spans {
-            let f0 = frameOf[sp.from]
-            let f1 = frameOf[sp.from + sp.count - 1]
-            var sc: Float = 0
-            for i in sp.from..<(sp.from + sp.count) { sc += scoreOf[i] }
-            // 得分是对数概率，转成 0~1 好理解
-            let avg = Double(sc) / Double(sp.count)
+            let e0 = extOfToken[sp.from]
+            let e1 = extOfToken[sp.from + sp.count - 1]
+            // 词的起止：第一个字母的起始帧 → 最后一个字母的结束帧
+            let f0 = firstFrame[e0] >= 0 ? firstFrame[e0] : 0
+            let f1 = lastFrame[e1] >= 0 ? lastFrame[e1] : f0
+            var sum: Float = 0; var cnt = 0
+            for i in sp.from..<(sp.from + sp.count) {
+                let e = extOfToken[i]
+                if scoreCnt[e] > 0 { sum += scoreSum[e]; cnt += scoreCnt[e] }
+            }
+            // 得分是对数概率的均值，转成 0~1
+            let avg = cnt > 0 ? Double(sum) / Double(cnt) : -10
             out.append(Word(text: sp.word,
                             start: offset + Double(f0) * secPerFrame,
                             end: offset + Double(f1 + 1) * secPerFrame,
-                            score: min(1, max(0, exp(avg / 3)))))
+                            score: min(1, max(0, exp(avg)))))
         }
         return out
     }
