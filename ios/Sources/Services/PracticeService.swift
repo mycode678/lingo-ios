@@ -169,6 +169,47 @@ final class PracticeService {
         }
     }
 
+    // MARK: 录音（**只在这台手机上**，没有任何上传路径，见 ios/guard-privacy.sh）
+
+    static var recDir: URL {
+        let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Recordings", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+
+    /// 把刚录的这条留下来并记账。每句只留最近 3 条 ——
+    /// 不设上限的话练几个月手机就被自己的录音塞满了。
+    @discardableResult
+    func addRec(_ sentId: String, from src: URL, score: Double?, dur: Double) -> URL? {
+        let safe = sentId.replacingOccurrences(of: "/", with: "_")
+        let dst = Self.recDir.appendingPathComponent("\(safe)-\(Int(Date().timeIntervalSince1970)).wav")
+        do { try FileManager.default.copyItem(at: src, to: dst) } catch { return nil }
+        try? db.run("INSERT INTO rec(sent_id, path, score, dur, at) VALUES(?,?,?,?,?)",
+                    [sentId, dst.lastPathComponent, score, dur, Date().timeIntervalSince1970])
+        pruneRecs(sentId, keep: 3)
+        return dst
+    }
+
+    func recs(_ sentId: String) -> [(path: String, score: Double?, at: Double)] {
+        let rows = (try? db.rows("SELECT path, score, at FROM rec WHERE sent_id=? ORDER BY at DESC",
+                                 [sentId])) ?? []
+        return rows.map { ($0["path"] as? String ?? "", $0["score"] as? Double, $0["at"] as? Double ?? 0) }
+    }
+
+    func recCount() -> Int {
+        (try? db.row("SELECT COUNT(*) AS n FROM rec")?["n"] as? Int) as? Int ?? 0
+    }
+
+    private func pruneRecs(_ sentId: String, keep: Int) {
+        let all = recs(sentId)
+        guard all.count > keep else { return }
+        for old in all.dropFirst(keep) {
+            try? FileManager.default.removeItem(at: Self.recDir.appendingPathComponent(old.path))
+            try? db.run("DELETE FROM rec WHERE sent_id=? AND path=?", [sentId, old.path])
+        }
+    }
+
     // MARK: 从服务器搬一次家
     //
     // 老用户（我自己）在服务器上已经攒了进度，第一次跑本地版时搬过来一次。

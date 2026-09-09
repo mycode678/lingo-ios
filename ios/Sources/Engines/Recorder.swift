@@ -195,8 +195,12 @@ final class Recorder: NSObject, ObservableObject {
                 // 录音本身不上传 —— 只把分数和听写结果同步给服务器做进度统计。
                 // 录音永远只留在手机上，这一条是这个 App 对用户的承诺。
                 if let src = sentence?.src {
+                    let dur = Double(mine.count) / 16000
+                    // 先在本机留一份并记账（每句只留最近 3 条）
+                    PracticeService.shared.addRec(src, from: fileURL,
+                                                  score: Double(score?.overall ?? 0), dur: dur)
                     await Api.uploadRecMeta(src, score: Double(score?.overall ?? 0),
-                                            heard: text, dur: Double(mine.count) / 16000)
+                                            heard: text, dur: dur)
                 }
             } catch {
                 if diff == nil { message = "听写没跑成：\(error.localizedDescription)" }
