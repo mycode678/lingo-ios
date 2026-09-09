@@ -3,9 +3,12 @@ import SwiftUI
 /// 跟读结果：不光给分，要说清楚**哪个词不对、为什么、怎么改**。
 ///
 /// 三块，从上到下按"最该先看"排：
-///   ① 一句话诊断 —— 最重要，直接告诉你毛病在哪、怎么练
-///   ② 逐词标色   —— 点任一个词，先放原声再放你的，来回听差别
-///   ③ 三个分项   —— 音准/节奏/连读，知道自己弱在哪一项
+///   ① 三个分项   —— 音准/节奏/连读，一行就完，先知道弱在哪一项
+///   ② 一句话诊断 —— 毛病在哪、怎么练
+///   ③ 逐词标色   —— 点任一个词，先放原声再放你的，来回听差别
+///
+/// 分项本来排在最后。字号调到最大时诊断能写满一屏，分项被顶到看不见的地方 ——
+/// 最该一眼看到的数字反而要滚半天，所以提到最上面。
 struct CompareView: View {
     let diff: Compare
     @ObservedObject var rec = Recorder.shared
@@ -20,9 +23,9 @@ struct CompareView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: T.s3) {
+            scores
             notes
             wordRow
-            scores
             legend
         }
     }
