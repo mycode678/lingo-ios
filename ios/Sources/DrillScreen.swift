@@ -406,10 +406,16 @@ struct DrillScreen: View {
         // 掉到屏幕外面。体检早就量出来了，但那时候它只打印不断言，所以一直没人管。
         //
         // 改成先把固定的几块扣掉，剩下多少才分给"波形 + 原文"，保证一定装得下。
-        let fixed: CGFloat = 30 + 44 + 44 + 34 + 4 * 5 + 2   // 选区条+小句+控制条+打分+间距+底边
-        let avail = max(120, geo.size.height - fixed)
-        let cardHeight = anyText ? min(cardIdeal, avail * 0.42) : 0
-        let waveHeight = max(100, avail - cardHeight - (cardHeight > 0 ? 4 : 0))
+        // 一行写成 30+44+44+34+4*5+2 编译器要算半天（真报过 unable to type-check），
+        // 拆开写死类型
+        let hSel: CGFloat = 30, hChunk: CGFloat = 44
+        let hCtl: CGFloat = 44, hGrade: CGFloat = 34
+        let hGaps: CGFloat = 22
+        let fixed: CGFloat = hSel + hChunk + hCtl + hGrade + hGaps
+        let avail: CGFloat = max(120, geo.size.height - fixed)
+        let cardHeight: CGFloat = anyText ? min(cardIdeal, avail * 0.42) : 0
+        let gapCard: CGFloat = cardHeight > 0 ? 4 : 0
+        let waveHeight: CGFloat = max(100, avail - cardHeight - gapCard)
         return VStack(spacing: 4) {
             // 上半截单独一层：跟读结果只浮在这一截上，不许盖住下面的控制条，
             // 也不许盖满波形（盖住就没法圈选区）。
