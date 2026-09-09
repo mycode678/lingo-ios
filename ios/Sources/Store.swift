@@ -110,7 +110,8 @@ final class DrillModel: ObservableObject {
             try? await Player.shared.load(src: s.src)
             view = (0, Player.shared.duration)
             let i = Int(s.src.split(separator: "/").last?.split(separator: ".").first ?? "1") ?? 1
-            words = Demo.words[min(max(0, i - 1), Demo.words.count - 1)]
+            words = Self.padOnsets(Demo.words[min(max(0, i - 1), Demo.words.count - 1)],
+                                   duration: Player.shared.duration)
             chunks = Self.cutChunks(words)
             marks = []
             if Demo.preselect, chunks.count > 1 {
@@ -126,7 +127,8 @@ final class DrillModel: ObservableObject {
             view = (0, Player.shared.duration)
             marks = (try? await Api.marks(s.src)) ?? []
             do {
-                words = try await Api.align(s.src)
+                words = Self.padOnsets(try await Api.align(s.src),
+                                       duration: Player.shared.duration)
                 chunks = Self.cutChunks(words)
                 if words.isEmpty { note = "服务器还没切好这句的词" }
             if let sv = saved, sv.upperBound <= Player.shared.duration + 0.01 {
@@ -224,6 +226,30 @@ final class DrillModel: ObservableObject {
 
     /// 按停顿把句子切成小句：词间空隙 ≥180ms 断一刀，标点算半个停顿；
     /// 太短的并给邻居，太长的从最大的停顿处再切。听不懂整句时先抠一个小句最有效。
+    /// 把对齐给的词边界往前挪一点，补回被吃掉的起音。
+    ///
+    /// **为什么要补**：CTC 对齐天生把词的起点标晚 —— 模型要"听清楚了"才认定
+    /// 这个词开始，而 the / a / to / of 这些虚词的起音又轻又短（the 的 /ð/），
+    /// 模型要等到元音才敢确认。照它给的时间播就缺一小截，听起来像"没读 the"。
+    ///
+    /// 补多少：往前借前一个词留下的那段间隙（那本来就是这个词的起音，
+    /// 借了不会吃到上一个词），最多 90 毫秒、且不超过间隙的八成。
+    /// 在这儿一次改掉，后面波形高亮、小句、吸附、播放就全都一致了。
+    static func padOnsets(_ ws: [Api.Word], duration: Double) -> [Api.Word] {
+        guard ws.count > 1 else { return ws }
+        var out = ws
+        for i in out.indices {
+            let gapBefore = i > 0 ? max(0, out[i].s - ws[i - 1].e) : out[i].s
+            let lead = min(0.09, gapBefore * 0.8)
+            out[i].s = max(0, out[i].s - lead)
+            let gapAfter = i < ws.count - 1 ? max(0, ws[i + 1].s - out[i].e)
+                                            : max(0, duration - out[i].e)
+            out[i].e = min(duration > 0 ? duration : out[i].e + 1,
+                           out[i].e + min(0.04, gapAfter * 0.5))
+        }
+        return out
+    }
+
     static func cutChunks(_ words: [Api.Word]) -> [(Int, Int)] {
         guard words.count >= 3 else { return words.isEmpty ? [] : [(0, words.count - 1)] }
         var gap: [Double] = []
