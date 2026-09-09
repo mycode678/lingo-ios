@@ -370,7 +370,7 @@ struct DrillScreen: View {
                 }
             }
             // 小句固定在底下这组的正上方，位置不随文字多少变
-            if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
+            chunkStrip.auditBlock("小句")
             controlStrip.auditBlock("控制条")
             gradeRow(38).auditBlock("打分")
         }
@@ -426,7 +426,7 @@ struct DrillScreen: View {
                 }
             }
             // 小句固定在最底下这组的正上方 —— 位置永远不随文字多少变，闭着眼也能点
-            if !vm.chunks.isEmpty { chunkStrip.auditBlock("小句") }
+            chunkStrip.auditBlock("小句")
             gradeRow.auditBlock("打分")
             transport.auditBlock("控制条")
         }
@@ -777,11 +777,25 @@ struct DrillScreen: View {
     /// 横屏用：小句排成一行横着滑，只占 40 点。
     /// 上一版横屏干脆把小句砍了，可小句正是"圈半秒反复听"的入口，砍不得。
     private var chunkStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                ForEach(Array(vm.chunks.enumerated()), id: \.offset) { i, c in chunkChip(i, c) }
+        Group {
+            if vm.chunks.isEmpty {
+                // 还没算出词边界时也占着这行位置 —— 不然小句会凭空冒出来，
+                // 底下的打分和控制条跟着往下跳一格（他碰上过"小句没了"）
+                HStack(spacing: T.s2) {
+                    if vm.loading { ProgressView().controlSize(.mini) }
+                    Text(vm.loading ? "正在切词…" : "这句还没切好词")
+                        .font(.system(size: T.f2)).foregroundStyle(.tertiary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, T.side)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(Array(vm.chunks.enumerated()), id: \.offset) { i, c in chunkChip(i, c) }
+                    }
+                    .padding(.horizontal, T.side)
+                }
             }
-            .padding(.horizontal, T.side)
         }
         .frame(height: 44)
     }
