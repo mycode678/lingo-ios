@@ -73,6 +73,12 @@ final class DrillUITests: XCTestCase {
         let app = launch()
         let wave = app.otherElements["waveform"]
         XCTAssertTrue(wave.waitForExistence(timeout: 10), "找不到波形")
+        // 波形这个元素在音频还没装好时就已经在了。这时候拖，时间轴还是 0 长度，
+        // 拖了也画不出选区。等小句出来再拖 —— 小句是切完词才有的，
+        // 它出来就说明音频和词边界都到位了。
+        XCTAssertTrue(app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Excuse me can you tell'")).firstMatch
+            .waitForExistence(timeout: 15), "等不到小句，音频/词边界没装好")
         let a = wave.coordinate(withNormalizedOffset: CGVector(dx: 0.30, dy: 0.5))
         let b = wave.coordinate(withNormalizedOffset: CGVector(dx: 0.62, dy: 0.5))
         // 现在单指按下一动就画选区（不用等长按），跟 PC 上鼠标一个手感

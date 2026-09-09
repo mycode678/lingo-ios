@@ -136,9 +136,12 @@ struct DrillScreen: View {
             wireNowPlaying(s)
         }
         .task(id: s.src) {
-            // 这一屏跟复习页共用播放器：从复习页回来时播放器里装的可能是别的句子。
-            let fresh = player.loadedSrc != s.src
             await vm.load(s)
+            // 这一屏跟复习页共用播放器：从复习页回来时播放器里装的可能是别的句子。
+            // 这个判断必须放在 vm.load **之后** —— vm.load 自己就会把音频装好，
+            // 放前面判的话每次换句都会多一次 pause+重新装载，正赶上用户
+            // （和测试）在波形上拖选区，一拖就断。
+            let fresh = player.loadedSrc != s.src
             vm.snap = snap
             player.gapIn = gapIn
             player.gapOut = gapOut          // 漏了这句：改完"换下一句之前"重开 App 就白改
@@ -147,7 +150,11 @@ struct DrillScreen: View {
             // 当前选区 —— 否则波形上选区还画着、右上角还写着秒数，按播放却放整句。
             let switched = autoPlayedSrc != s.src
             let seg = (switched && loopWhole) ? nil : vm.selection
-            if fresh { player.pause(); try? await Player.shared.load(src: s.src) }
+            if fresh {
+                player.pause()
+                try? await Player.shared.load(src: s.src)
+                vm.zoomAll()
+            }
             player.claim(loop: player.loop, times: loopTimes,
                          segment: seg,
                          onEnd: { autoAdvance(after: s.src) })
