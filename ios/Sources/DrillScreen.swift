@@ -411,6 +411,7 @@ struct DrillScreen: View {
         let cardHeight = cardH(geo.size.height)
         return VStack(spacing: 0) {
             probeButtons
+            if Audit.on { AuditProbe() }
             VStack(spacing: 8) {
                 // 唯一的弹性件。给它优先权，让它先把富余的高度吃掉 ——
                 // 不给的话它和下面的文字区平分，中间空出一大片，界面看着像塌了。

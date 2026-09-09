@@ -35,6 +35,12 @@ extension View {
 }
 
 enum Audit {
+    /// 最新一份体检结果。也挂到界面上一个看不见的元素上（见 auditProbe），
+    /// 这样真机跑 UI 测试时我在测试日志里就能直接读到每块的真实坐标 ——
+    /// 光看截图只能靠眼估，估不准就会像"波形没长高"这种改了等于没改的事。
+    @MainActor static let report = Report()
+    @MainActor final class Report: ObservableObject { @Published var text = "" }
+
     static var on: Bool { Demo.on && ProcessInfo.processInfo.arguments.contains("-audit") }
     private static var lastReport = ""
     private static var pending: DispatchWorkItem?
@@ -76,5 +82,19 @@ enum Audit {
         print(report)
         print(fails.isEmpty ? "LAYOUT-OK" : "LAYOUT-FAIL 共 \(fails.count) 处")
         fflush(stdout)
+        let one = lines.map { $0.replacingOccurrences(of: "AUDIT ", with: "") }
+                       .joined(separator: " | ")
+        DispatchQueue.main.async { Audit.report.text = one }
+    }
+}
+
+/// 体检结果的出口：一个 1×1 的透明点，它的辅助功能标签就是整份报告。
+/// UI 测试读它，比让人去数截图上的像素靠谱。
+struct AuditProbe: View {
+    @ObservedObject private var r = Audit.report
+    var body: some View {
+        Color.clear.frame(width: 1, height: 1)
+            .accessibilityIdentifier("auditReport")
+            .accessibilityLabel(r.text)
     }
 }

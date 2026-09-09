@@ -188,12 +188,25 @@ final class ShotUITests: XCTestCase {
         a.lifetime = .keepAlways
         add(a)
     }
+    /// 把体检报告（每块的真实 y 坐标和高度）打进测试日志。
+    /// 眼睛在截图上估"波形是不是长高了"估不准，这里给的是真数。
+    private func audit(_ app: XCUIApplication, _ when: String) {
+        let p = app.otherElements["auditReport"]
+        guard p.waitForExistence(timeout: 5), !p.label.isEmpty else {
+            print("【体检 \(when)】没拿到"); return
+        }
+        print("【体检 \(when)】" + p.label)
+        let att = XCTAttachment(string: p.label)
+        att.name = "体检 " + when; att.lifetime = .keepAlways
+        add(att)
+    }
+
     func testCaptureScreens() {
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "-screen", "drill"]
+        app.launchArguments = ["-demo", "-screen", "drill", "-audit"]
         app.launch()
         XCUIDevice.shared.orientation = .portrait
-        sleep(3); shot(app, "竖屏")
+        sleep(3); shot(app, "竖屏"); audit(app, "竖屏")
 
         // 跟读结果是最容易排版翻车的一屏（诊断折行、分项对齐、字号），
         // 每轮都要截，而且要截字号调大之后的样子。
@@ -214,9 +227,9 @@ final class ShotUITests: XCTestCase {
         for t in ["原文", "译文", "中文释义", "英文释义"] where app.buttons[t].exists {
             app.buttons[t].tap(); app.buttons["显示"].tap()
         }
-        sleep(2); shot(app, "横屏-文字全开")
+        sleep(2); shot(app, "横屏-文字全开"); audit(app, "横屏-文字全开")
         XCUIDevice.shared.orientation = .portrait
-        sleep(3); shot(app, "竖屏-文字全开")
+        sleep(3); shot(app, "竖屏-文字全开"); audit(app, "竖屏-文字全开")
     }
 }
 
