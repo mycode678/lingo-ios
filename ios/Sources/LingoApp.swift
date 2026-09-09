@@ -35,7 +35,9 @@ struct LingoApp: App {
     }
 
     @ViewBuilder private var rootView: some View {
-        if Demo.land {
+        if Demo.alignBench {
+            if #available(iOS 17.0, *) { AlignBenchView() } else { Text("需要 iOS 17") }
+        } else if Demo.land {
             GeometryReader { g in                 // 截横屏专用：按横屏尺寸渲染再转 90 度
                 root
                     .frame(width: g.size.height, height: g.size.width)

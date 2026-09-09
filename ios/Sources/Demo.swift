@@ -19,6 +19,8 @@ enum Demo {
     /// 模拟器转不了屏，截横屏只能这么来：按横屏的宽高渲染，再整体转 90 度。
     /// 布局算的是"宽比高大就走横屏那套"，这样验出来的尺寸跟真机横屏一致。
     static var land: Bool { ProcessInfo.processInfo.arguments.contains("-land") }
+    /// -alignbench：跑手机端对齐的验证屏（跟服务器的结果比对）
+    static var alignBench: Bool { on && ProcessInfo.processInfo.arguments.contains("-alignbench") }
     /// -probe：打开测试后门（只在 -demo 下有效）。
     /// 真机上没法用代码按物理音量键、也没法替 AirPods 点两下，
     /// 但这些动作最终都汇到同一处代码。后门就是从内部触发那处代码，

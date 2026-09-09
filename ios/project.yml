@@ -23,6 +23,12 @@ targets:
     sources:
       - Sources
       - Resources
+      # 手机端对齐模型（181M，fp16）。超过 GitHub 单文件上限，不进仓库：
+      # Mac 上放在 ~/lingo-models/，构建前由 agent 脚本软链到 ios/models/。
+      # 云端 CI 没有这个目录，optional 让它照样能编译（那边只跑界面测试）。
+      - path: models
+        optional: true
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: Lingo                    # 不写的话产物会变成名字为空的 .app

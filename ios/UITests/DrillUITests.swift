@@ -202,3 +202,21 @@ final class ShotUITests: XCTestCase {
         sleep(3); shot(app, "竖屏-文字全开")
     }
 }
+
+/// 离线引擎验证：手机上自己算的对齐，和服务器算的（fa.db 那份）差多少？
+/// 这一条决定"能不能彻底摆脱服务器"——差得多就说明模型转换有损失，路子走不通。
+final class AlignerUITests: XCTestCase {
+    func testOnDeviceAlignmentMatchesServer() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-alignbench"]
+        app.launch()
+        // App 里跑完会把结果打在屏幕上（-alignbench 专用的一屏）
+        let result = app.staticTexts["alignResult"]
+        XCTAssertTrue(result.waitForExistence(timeout: 120), "对齐没跑出结果")
+        print("【对齐验证】" + result.label)
+        // 屏幕上会写 "最大误差 xx 毫秒"，超过 80 毫秒就算不合格
+        let ok = app.staticTexts["alignVerdict"]
+        XCTAssertTrue(ok.waitForExistence(timeout: 5))
+        XCTAssertTrue(ok.label.contains("通过"), "对齐质量不达标：" + ok.label)
+    }
+}
