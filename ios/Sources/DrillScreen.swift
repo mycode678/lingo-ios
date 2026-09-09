@@ -782,12 +782,11 @@ struct DrillScreen: View {
         let a = vm.words[c.0].s, b = vm.words[c.1].e
         let on = vm.selection.map { abs($0.lowerBound - a) < 0.02 && abs($0.upperBound - b) < 0.02 } ?? false
         return Button {
-            if on {                                  // 再点一次＝取消选中，回到整句
-                vm.setSelection(a: nil, b: nil, play: false)
-                vm.zoomAll()
-                player.claim(loop: player.loop, times: loopTimes, segment: nil,
-                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
-                player.play(from: 0)
+            // 点几次就放几次这一小句 —— 反复练一小句是精听最常做的事，
+            // 第二下跳回整句等于逼着人"取消再重选"（上一版就是这么设计错的）。
+            // 要回整句：右边那个「整句」键，或者双击这个小句。
+            if on {
+                player.play(from: vm.selection?.lowerBound ?? 0)
             } else {
                 vm.selectChunk(i)
             }
@@ -803,6 +802,14 @@ struct DrillScreen: View {
             .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
         }
         .buttonStyle(.plain)
+        // 双击这一小句＝回到整句（不用挪手去够右边那个「整句」键）
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            vm.setSelection(a: nil, b: nil, play: false)
+            vm.zoomAll()
+            player.claim(loop: player.loop, times: loopTimes, segment: nil,
+                         onEnd: { autoAdvance(after: store.current?.src ?? "") })
+            player.play(from: 0)
+        })
     }
 
     private var chunkRow: some View {
