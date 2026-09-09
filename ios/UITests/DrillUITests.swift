@@ -71,10 +71,13 @@ final class DrillUITests: XCTestCase {
         XCTAssertTrue(wave.waitForExistence(timeout: 10), "找不到波形")
         let a = wave.coordinate(withNormalizedOffset: CGVector(dx: 0.30, dy: 0.5))
         let b = wave.coordinate(withNormalizedOffset: CGVector(dx: 0.62, dy: 0.5))
-        a.press(forDuration: 0.35, thenDragTo: b)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '选区'"))
-                        .firstMatch.waitForExistence(timeout: 3),
-                      "在波形上长按拖动没有画出选区")
+        // 现在单指按下一动就画选区（不用等长按），跟 PC 上鼠标一个手感
+        a.press(forDuration: 0.05, thenDragTo: b)
+        // 画出来之后波形右上角会浮出 "1.43–1.89s" 的角标
+        let badge = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '–' AND label CONTAINS 's'")).firstMatch
+        XCTAssertTrue(badge.waitForExistence(timeout: 3),
+                      "在波形上拖动没有画出选区；" + dump(app))
     }
 
     /// 录完之后：结果面板要自己弹出来，控制条上要出现"对比"。
