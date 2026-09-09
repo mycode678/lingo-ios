@@ -57,6 +57,8 @@ struct DrillScreen: View {
     /// 上一次自动播过的是哪一句 —— "切到一句就自动播"只该在**换了句子**时发生，
     /// 从别的标签页切回来不该突然响（他碰上过：一点精听就自己放）
     @State private var autoPlayedSrc: String?
+    /// 原文卡里的字实际占多高（量出来的，见 sentenceCard）
+    @State private var cardContentH: CGFloat = 0
     @State private var probeBar = false          // -probe：真机测试用的后门按钮排
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
@@ -328,9 +330,13 @@ struct DrillScreen: View {
     //   **波形是唯一的弹性件**（最少 60，其余全给它），系统会自动把多的部分从它身上挤掉；
     //   原文卡有上限（屏高的 35%），保证它不会挤到别人头上。
 
-    /// 原文卡"想要"多高（按整行算，勾了几样算几样）
+    /// 原文卡"想要"多高。
+    /// 优先用量出来的真实文字高度（cardContentH）；量到之前先用按行数估的值兜底。
+    /// 以前只有估算，而且估的是**最坏情况**（英文按三行、中文按两行算），
+    /// 短句子就白占一大片 —— 体检量出来卡片 269 点、字才占 90 点，中间空一大块。
     private var cardIdeal: CGFloat {
         guard anyText else { return 0 }
+        if cardContentH > 1 { return cardContentH }
         var v: CGFloat = 18
         if showEn  { v += CGFloat(sentFont) * 1.35 * 3 }
         if showCn  { v += CGFloat(cnFont) * 1.5 * 2 }
@@ -417,9 +423,9 @@ struct DrillScreen: View {
                 // 不给的话它和下面的文字区平分，中间空出一大片，界面看着像塌了。
                 // 但也不能全吃：留下的那截是"左右滑切句"的手指落点，不能太窄。
                 waveBlock
-                    .frame(minHeight: 60, maxHeight: max(200, geo.size.height * 0.5))
-                    .layoutPriority(1)
+                    .frame(minHeight: 60, maxHeight: max(200, geo.size.height * 0.55))
                     .padding(.horizontal, T.side).auditBlock("波形")
+                    .layoutPriority(1)      // 必须写在最外层：套在 padding 里面等于没写
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
                     selectionBar.auditBlock("选区条")
@@ -788,6 +794,13 @@ struct DrillScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12).padding(.vertical, 10)
+        // 量一下文字到底占多高，卡片就只要这么多，多的还给波形
+        .background(GeometryReader { g in
+            Color.clear.preference(key: CardHKey.self, value: g.size.height)
+        })
+        }
+        .onPreferenceChange(CardHKey.self) { h in
+            if abs(h - cardContentH) > 1 { cardContentH = h }
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1284,5 +1297,13 @@ struct FlowLayout: Layout {
             x += s.width + spacing
             rowH = max(rowH, s.height)
         }
+    }
+}
+
+/// 原文卡文字的真实高度
+struct CardHKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
