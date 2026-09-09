@@ -54,6 +54,9 @@ struct DrillScreen: View {
     @State private var editRate: Int?           // 正在改第几档速度（-1＝那个自定义档）
     @State private var showLoop = false         // 循环遍数面板
     @State private var showTake = true          // 跟读结果这块开着没（往下滑收起）
+    /// 上一次自动播过的是哪一句 —— "切到一句就自动播"只该在**换了句子**时发生，
+    /// 从别的标签页切回来不该突然响（他碰上过：一点精听就自己放）
+    @State private var autoPlayedSrc: String?
     @State private var probeBar = false          // -probe：真机测试用的后门按钮排
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
@@ -142,8 +145,12 @@ struct DrillScreen: View {
                 default: break
                 }
             }
-            // 切到一句就自动响。走路时用音量键切句、屏幕黑着，不自动播等于没法用。
-            if autoPlay { player.play(from: vm.selection?.lowerBound ?? 0) }
+            // 切到一句就自动响 —— 走路时用音量键切句、屏幕黑着，不自动播等于没法用。
+            // 但只在**真的换了句子**时才响：从别的页切回精听不该突然出声。
+            if autoPlay, autoPlayedSrc != s.src {
+                autoPlayedSrc = s.src
+                player.play(from: vm.selection?.lowerBound ?? 0)
+            }
         }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
         .onChange(of: boostHF) { _, v in player.boostHF = v }

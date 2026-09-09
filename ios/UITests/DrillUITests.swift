@@ -87,9 +87,10 @@ final class DrillUITests: XCTestCase {
         XCTAssertTrue(app.buttons["对比"].waitForExistence(timeout: 10),
                       "录完了但控制条上没有「对比」；" + dump(app))
         XCTAssertTrue(app.buttons["我的"].exists, "结果面板里没有「我的」")
+        // 分项现在叫 音准/节奏/连读（原来叫词准/语调/节奏）
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS '词准'")).firstMatch.exists,
-            "结果面板里没有分项得分")
+            NSPredicate(format: "label CONTAINS '音准'")).firstMatch.waitForExistence(timeout: 5),
+            "结果面板里没有分项得分；" + dump(app))
     }
 
     /// 小句那一条必须在"没听懂"上面，且不许压住它
