@@ -168,12 +168,13 @@ struct ReviewScreen: View {
         Button {
             Task {
                 guard let card else { return }
-                if let r = try? await Api.grade(card.src, q,
-                        meta: ["word": card.word ?? "", "en": card.en, "cn": card.cn ?? "",
-                               "grp": card.grp ?? "", "tag": card.tag ?? "", "kind": card.kind ?? "sent"]) {
-                    let d = (r.card.due - Date().timeIntervalSince1970) / 86400
-                    toast = d < 1 ? "下次 \(max(1, Int(d * 24))) 小时后" : "下次 \(Int(d.rounded())) 天后"
-                }
+                let meta = ["word": card.word ?? "", "en": card.en, "cn": card.cn ?? "",
+                            "grp": card.grp ?? "", "tag": card.tag ?? "", "kind": card.kind ?? "sent"]
+                // 本机算排期、本机存，没网照样复习
+                let due = PracticeService.shared.grade(card.src, q, meta: meta)
+                let d = (due - Date().timeIntervalSince1970) / 86400
+                toast = d < 1 ? "下次 \(max(1, Int(d * 24))) 小时后" : "下次 \(Int(d.rounded())) 天后"
+                _ = try? await Api.grade(card.src, q, meta: meta)      // 顺手备份
                 await store.loadDueCount()
                 next()
             }
@@ -197,8 +198,18 @@ struct ReviewScreen: View {
             queue = Demo.sentences.map { .init(src: $0.src, word: Demo.word, en: $0.en, cn: $0.cn,
                                                grp: $0.grp, tag: $0.tag, kind: "sent", reps: 1, due: 0) }
         } else {
-            do { queue = try await Api.due(40) }
-            catch { failed = error.localizedDescription; queue = [] }
+            // 复习队列从本机取 —— 没网也要能复习，这是"脱离服务器"的核心场景之一。
+            await PracticeService.shared.seedFromServerIfNeeded()
+            let local = PracticeService.shared.due(40)
+            if !local.isEmpty {
+                queue = local.map { .init(src: $0.src, word: $0.word, en: $0.en,
+                                          cn: $0.cn, grp: $0.grp, tag: $0.tag,
+                                          kind: "sent", reps: $0.reps, due: $0.due) }
+            } else {
+                // 本机一条都没有（刚装上、还没搬过家）才去问服务器
+                do { queue = try await Api.due(40) }
+                catch { failed = error.localizedDescription; queue = [] }
+            }
         }
         i = 0; shown = false; toast = nil
         loading = false

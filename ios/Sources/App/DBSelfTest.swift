@@ -43,15 +43,15 @@ struct DBSelfTest: View {
             let v2 = db.version
             out.append(("dbVersion", "库版本", "\(v2)"))
             out.append(("dbIdempotent", "迁移跑两遍",
-                        v1 == v2 && v1 == 1 ? "一样，OK" : "不一样！\(v1)→\(v2)"))
+                        v1 == v2 && v1 == DB.latestVersion ? "一样，OK" : "不一样！\(v1)→\(v2)"))
 
             // ② 六张表都在
             let tabs = try db.rows(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
                 .compactMap { $0["name"] as? String }.sorted()
-            let want = ["fav", "mark", "progress", "quota", "rec", "unlock"]
+            let want = ["fav", "mark", "meta", "progress", "quota", "rec", "sent", "unlock"]
             out.append(("dbTables", "表",
-                        tabs == want ? "六张都在" : "对不上：\(tabs.joined(separator: ","))"))
+                        tabs == want ? "八张都在" : "对不上：\(tabs.joined(separator: ","))"))
 
             if write {
                 // ③ 写一条进度（这一趟只写，写完测试会杀掉 App）
@@ -73,7 +73,18 @@ struct DBSelfTest: View {
                 }
             }
 
-            // ⑤ 中文和撇号能原样存回来（绑定字符串用错 destructor 会读出乱码，经典坑）
+            // ⑤ 本地排期：没听懂要 10 分钟后再撞，会了要推到明天以后
+            let ps = PracticeService(db: db)
+            let now = Date().timeIntervalSince1970
+            let d1 = ps.grade("selftest/sm2", 1)
+            let ok1 = abs(d1 - (now + 600)) < 30
+            _ = ps.grade("selftest/sm2", 3)
+            let d3 = ps.grade("selftest/sm2", 3)
+            let ok3 = d3 > now + 86400
+            out.append(("dbSchedule", "本地排期",
+                        ok1 && ok3 ? "OK" : "不对 没听懂+\(Int(d1-now))秒 会了+\(Int((d3-now)/86400))天"))
+
+            // ⑥ 中文和撇号能原样存回来（绑定字符串用错 destructor 会读出乱码，经典坑）
             let s = "劳驾，请问'博物馆'怎么走？"
             try db.run("INSERT OR REPLACE INTO fav(sent_id, at) VALUES(?,?)", [s, 1.0])
             let back = try db.row("SELECT sent_id FROM fav WHERE at=1.0")?["sent_id"] as? String

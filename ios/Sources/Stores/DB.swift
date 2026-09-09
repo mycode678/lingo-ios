@@ -122,8 +122,29 @@ final class DB {
             via     TEXT NOT NULL,
             at      REAL NOT NULL,
             PRIMARY KEY(pack_id, sent_id));
+        """,
+
+        // v2：本地要能自己排复习，就得有句子的基本信息（复习卡片上要显示原文译文），
+        // 以前这些全从服务器现取。另外加一张 meta 表存"迁没迁过"这类小状态。
+        """
+        CREATE TABLE IF NOT EXISTS sent(
+            id   TEXT PRIMARY KEY,
+            word TEXT NOT NULL DEFAULT '',
+            en   TEXT NOT NULL DEFAULT '',
+            cn   TEXT NOT NULL DEFAULT '',
+            grp  TEXT NOT NULL DEFAULT '',
+            tag  TEXT NOT NULL DEFAULT '',
+            kind TEXT NOT NULL DEFAULT 'sent');
+        CREATE INDEX IF NOT EXISTS ix_sent_word ON sent(word);
+
+        CREATE TABLE IF NOT EXISTS meta(
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL);
         """
     ]
+
+    /// 当前代码带的库版本
+    static var latestVersion: Int { migrations.count }
 
     /// 跑迁移。跑几遍都一样（幂等），这是验收标准之一。
     func migrate() throws {

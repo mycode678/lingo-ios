@@ -71,6 +71,7 @@ struct DrillScreen: View {
     @State private var landHideText = false
     /// 这一句打过哪一档（换句就清空）。点完要看得见，不然不知道打没打过。
     @State private var graded: Int?
+    private let practice = PracticeService.shared
     @State private var probeBar = false          // -probe：真机测试用的后门按钮排
     @State private var flash: String?
     /// 中间浮一句话（切句时的"4 / 12"、开关音量键的提示）—— 单独一个状态，
@@ -1080,17 +1081,22 @@ struct DrillScreen: View {
     }
     private func grade(_ q: Int, _ t: String, _ c: Color, _ h: CGFloat = 34) -> some View {
         Button {
-            Task {
-                guard let s = store.current else { return }
-                if let r = try? await Api.grade(s.src, q, score: rec.score.map { Double($0.overall) },
-                                                meta: store.meta(s)) {
-                    let d = (r.card.due - Date().timeIntervalSince1970) / 86400
-                    showFlash(d < 1 ? "下次 \(max(1, Int(d * 24))) 小时后" : "下次 \(Int(d.rounded())) 天后")
-                    await store.refreshProgress()
-                }
-                if autoNext { step(1) }
-            }
+            guard let s = store.current else { return }
             graded = q          // 点过哪一档要看得见，不然不知道这句打没打过
+            // 排期在本机算、本机存 —— 没网也能打分。这是"脱离服务器"的第一步。
+            let due = practice.grade(s.src, q,
+                                     score: rec.score.map { Double($0.overall) },
+                                     meta: store.meta(s).mapValues { "\($0)" })
+            let d = (due - Date().timeIntervalSince1970) / 86400
+            showFlash(d < 1 ? "下次 \(max(1, Int(d * 24))) 小时后" : "下次 \(Int(d.rounded())) 天后")
+            Task {
+                await store.loadDueCount()
+                // 顺手同步一份给服务器做备份，成不成都不影响本机
+                _ = try? await Api.grade(s.src, q, score: rec.score.map { Double($0.overall) },
+                                         meta: store.meta(s))
+                await store.refreshProgress()
+            }
+            if autoNext { step(1) }
         } label: {
             // 字号保持看得清（15/16），压的是**块本身**：高度和留白。
             // 这四个键一次只按一下，色块做那么大反而喧宾夺主。

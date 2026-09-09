@@ -71,6 +71,11 @@ final class Store: ObservableObject {
     }
 
     func loadDueCount() async {
+        // 本机的数说了算：没网也要有数。服务器那份只在本机一条都没有时兜底
+        // （比如刚装上、还没搬过家）。
+        await PracticeService.shared.seedFromServerIfNeeded()
+        let local = PracticeService.shared.dueCount()
+        if local > 0 { dueCount = local; return }
         if let c = try? await Api.counts() { dueCount = c.due }
     }
     func loadHist() async {
