@@ -193,6 +193,19 @@ final class ShotUITests: XCTestCase {
         app.launch()
         XCUIDevice.shared.orientation = .portrait
         sleep(3); shot(app, "竖屏")
+
+        // 跟读结果是最容易排版翻车的一屏（诊断折行、分项对齐、字号），
+        // 每轮都要截，而且要截字号调大之后的样子。
+        let big = XCUIApplication()
+        big.launchArguments = ["-demo", "-screen", "drill", "-take", "-bigfont"]
+        big.launch()
+        sleep(4); shot(big, "跟读结果")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(3); shot(big, "跟读结果横屏")
+        XCUIDevice.shared.orientation = .portrait
+        big.terminate()
+        app.activate()
+        sleep(2)
         XCUIDevice.shared.orientation = .landscapeLeft
         sleep(3); shot(app, "横屏")
         // 文字全开：最容易把波形挤没的情况

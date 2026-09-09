@@ -21,6 +21,7 @@ struct LingoApp: App {
 
     init() {
         NowPlaying.shared.wire()
+        if Demo.bigFont { UserDefaults.standard.set(26.0, forKey: "ui.resultFont") }
         if Demo.audit {
             // 体检模式：把"内容最多"的情况造出来 —— 四样文字全开、字号拉大。
             // 布局要是会压，这种组合最容易压。
