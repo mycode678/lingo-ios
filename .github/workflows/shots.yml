@@ -112,7 +112,10 @@ jobs:
           xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
             -destination "platform=iOS Simulator,id=$UDID" \
             -only-testing:LingoUITests \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "Test Case|error:|failed|passed|\*\* TEST" | tail -40
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee /tmp/test.log \
+            | grep -E "Test Case|error:|\*\* TEST" | tail -40
+          # 失败时把真正的原因贴出来（只 grep "Test Case" 会把编译错、崩溃原因全滤掉）
+          grep -E "error:|Failing tests|crashed|Restarting|could not be launched" /tmp/test.log | sort -u | head -20
 
       - uses: actions/upload-artifact@v4
         with:
