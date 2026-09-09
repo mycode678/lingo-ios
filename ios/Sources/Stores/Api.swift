@@ -203,18 +203,10 @@ enum Api {
     static func histAdd(_ w: String) async {
         _ = try? await post("/api/hist", ["w": w], as: OK.self)
     }
-    static func uploadRec(_ src: String, data: Data, ext: String,
-                          score: Double?, heard: String, dur: Double) async {
-        var c = URLComponents(string: base + "/api/rec")!
-        c.queryItems = [.init(name: "src", value: src), .init(name: "ext", value: ext),
-                        .init(name: "heard", value: heard), .init(name: "dur", value: String(dur))]
-        if let s = score { c.queryItems?.append(.init(name: "score", value: String(s))) }
-        var r = URLRequest(url: c.url!)
-        r.httpMethod = "POST"
-        if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
-        r.httpBody = data
-        _ = try? await session.data(for: r)
-    }
+    // 这里以前有个 uploadRec：把录音二进制 POST 到 /api/rec。已经删掉。
+    // 没人调它不等于安全 —— 只要函数还在，哪天谁顺手一调，
+    // "录音绝不上传"这句承诺就破了，隐私政策也就成了假话。
+    // CI 里有一条 grep 守着，任何上传录音的代码路径重新出现就让构建红。
     /// 只把分数和听写结果同步给服务器（做进度统计），**录音本身不上传**。
     /// 录音永远只留在手机上 —— 这是这个 App 对用户的承诺，也让隐私政策能写得干干净净。
     static func uploadRecMeta(_ src: String, score: Double?, heard: String, dur: Double) async {

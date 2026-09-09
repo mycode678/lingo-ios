@@ -131,13 +131,16 @@ struct TodayScreen: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: 还差多少领奖励
+    // MARK: 今天还差多少
 
+    // 原来这儿写的是"再练 N 句就能领今日奖励"——可发奖那套（D4）一行代码都还没有，
+    // 练满了什么也不会发生。对用户许了愿不兑现，比不说更糟。
+    // 先改成只说进度，等 D4 做完再把"奖励"两个字加回来。
     @ViewBuilder private var rewardHint: some View {
         if todayDone < goal {
             HStack(spacing: T.s2) {
-                Image(systemName: "gift").foregroundStyle(.orange)
-                Text("再练 \(goal - todayDone) 句就能领今日奖励")
+                Image(systemName: "target").foregroundStyle(.orange)
+                Text("离今天的目标还差 \(goal - todayDone) 句")
                     .font(.system(size: T.f2)).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
