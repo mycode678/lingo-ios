@@ -29,6 +29,21 @@ final class WaveUIView: UIView {
 
     // 回调
     var onNeedEnvelope: ((Int, Double, Double) -> [(Float, Float)])?
+    /// 算好的包络存着 —— 拖选区时视窗根本没变，包络是同一份，
+    /// 每帧重算 24 万次采样纯属白干（真机上就卡在这儿）。只有换句、缩放、改宽度才重算。
+    private var envCache: [(Float, Float)] = []
+    private var envKey: (Int, Double, Double, Int) = (0, .nan, .nan, 0)
+    private var envStamp = 0                     // 换了句子就 +1，缓存作废
+    private func envelopeCached(_ n: Int) -> [(Float, Float)] {
+        let key = (n, view0, view1, envStamp)
+        if key == envKey, envCache.count == n { return envCache }
+        envCache = onNeedEnvelope?(n, view0, view1) ?? envelope
+        envKey = key
+        return envCache
+    }
+    /// 自己的录音那条轨同理
+    private var meCache: [(Float, Float)] = []
+    private var meKey: (Int, Double, Double, Int) = (0, .nan, .nan, 0)
     var onSelectionChanged: ((Double?, Double?, Bool) -> Void)?   // a, b, 是否要立刻播
     var onHeadChanged: ((Double) -> Void)?
     var onViewChanged: ((Double, Double) -> Void)?
@@ -39,7 +54,6 @@ final class WaveUIView: UIView {
     private var startView: (Double, Double) = (0, 1)
     private var anchorT: Double = 0
     private var moved = false
-    private var longPress: DispatchWorkItem?
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
     private let ROW: CGFloat = 22                // 词条那一行
@@ -81,18 +95,10 @@ final class WaveUIView: UIView {
             if abs(p.x - x(selA!)) < GRAB { mode = .edgeA; haptic.impactOccurred(); return }
             if abs(p.x - x(selB!)) < GRAB { mode = .edgeB; haptic.impactOccurred(); return }
         }
+        // 单指按下就准备画选区，不用等 180 毫秒 ——
+        // 等待期是"划不动、要等好久"的一半原因，PC 上鼠标按下就开始划，这里也一样。
+        // 平移让给双指拖（缩放本来就是双指，一套手势不打架）。
         mode = .pan
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.mode == .pan, !self.moved else { return }
-            self.mode = .newSel
-            let s = self.snap(self.anchorT)
-            self.selA = s; self.selB = s
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            self.setNeedsDisplay()
-        }
-        longPress = work
-        // 180ms：比系统长按短一半。再短容易跟"拖着平移"打架，再长手指会等得难受。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -100,12 +106,15 @@ final class WaveUIView: UIView {
         let raw = min(max(t(p.x), 0), duration)
         switch mode {
         case .pan:
-            if abs(p.x - startX) > 5 { moved = true; longPress?.cancel() }
-            let dt = Double((p.x - startX) / max(1, bounds.width)) * (startView.1 - startView.0)
-            let w = startView.1 - startView.0
-            view0 = min(max(startView.0 - dt, 0), max(0, duration - w))
-            view1 = view0 + w
-            onViewChanged?(view0, view1)
+            // 手指一动就是在画选区（超过 4 点算"动了"，避免点一下被当成画）
+            guard abs(p.x - startX) > 4 else { return }
+            moved = true
+            mode = .newSel
+            let s0 = snap(anchorT)
+            selA = s0; selB = s0
+            haptic.impactOccurred()
+            let s = snap(raw)
+            selA = min(anchorT, s); selB = max(anchorT, s)
         case .newSel:
             let s = snap(raw)
             selA = min(anchorT, s); selB = max(anchorT, s)
@@ -119,7 +128,6 @@ final class WaveUIView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        longPress?.cancel()
         defer { mode = .none; setNeedsDisplay() }
         switch mode {
         case .pan:
@@ -147,21 +155,36 @@ final class WaveUIView: UIView {
         }
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        longPress?.cancel(); mode = .none; setNeedsDisplay()
+        // 第二根手指落下时会走到这里（单指那套被取消）。把选区记住，
+        // 免得"本来圈好的选区，一捏缩放就没了"。
+        pinchSelA = selA; pinchSelB = selB
+        mode = .none; setNeedsDisplay()
     }
 
+    /// 双指：捏＝缩放，拖＝平移。
+    /// 单指现在专门用来画选区（那是这块最常做的事），平移就归到双指这儿来。
     @objc private func onPinch(_ g: UIPinchGestureRecognizer) {
         guard g.numberOfTouches >= 2 else { return }
-        if g.state == .began { longPress?.cancel(); mode = .none; startView = (view0, view1) }
         let p = g.location(in: self)
+        if g.state == .began {
+            mode = .none                      // 双指一落下就取消单指那套，别串
+            selA = pinchSelA; selB = pinchSelB
+            startView = (view0, view1)
+            pinchStartX = p.x
+        }
         let anchor = t(p.x)
         let w = min(max((startView.1 - startView.0) / Double(g.scale), 0.05), duration)
         let frac = Double(p.x / max(1, bounds.width))
-        view0 = min(max(anchor - w * frac, 0), max(0, duration - w))
+        var v0 = anchor - w * frac
+        let dx = Double((p.x - pinchStartX) / max(1, bounds.width)) * w   // 双指整体挪了多少
+        v0 -= dx
+        view0 = min(max(v0, 0), max(0, duration - w))
         view1 = view0 + w
         onViewChanged?(view0, view1)
         setNeedsDisplay()
     }
+    private var pinchStartX: CGFloat = 0
+    private var pinchSelA: Double?, pinchSelB: Double?
 
     // MARK: - 画
     override func draw(_ rect: CGRect) {
@@ -216,16 +239,24 @@ final class WaveUIView: UIView {
             ctx.fill(CGRect(x: x(selA!), y: laneTop, width: x(selB!) - x(selA!), height: laneH))
         }
         let n = Int(W)
-        let env = onNeedEnvelope?(n, view0, view1) ?? envelope
+        let env = envelopeCached(n)
         let mid = laneTop + laneH / 2
+        // 攒成两批一次画完（选区内一批、选区外一批）。
+        // 原来是一根竖线一次 ctx.fill，800 根就是 800 次绘制调用，
+        // 拖动时每秒 4.8 万次 —— 真机直接卡住（他反馈"划不动、要等好久"）。
+        var outside: [CGRect] = [], inside: [CGRect] = []
+        outside.reserveCapacity(n); inside.reserveCapacity(64)
+        let selX0 = hasSel ? x(selA!) : 0, selX1 = hasSel ? x(selB!) : 0
         for i in 0..<min(n, env.count) {
             let (lo, hi) = env[i]
-            let inSel = hasSel && Double(i) >= Double(x(selA!)) && Double(i) < Double(x(selB!))
-            ctx.setFillColor((inSel ? C.selWave : C.wave).cgColor)
             let y1 = mid - CGFloat(hi) * (laneH / 2 - 4)
             let y2 = mid - CGFloat(lo) * (laneH / 2 - 4)
-            ctx.fill(CGRect(x: CGFloat(i), y: y1, width: 1, height: max(1, y2 - y1)))
+            let r = CGRect(x: CGFloat(i), y: y1, width: 1, height: max(1, y2 - y1))
+            if hasSel && CGFloat(i) >= selX0 && CGFloat(i) < selX1 { inside.append(r) }
+            else { outside.append(r) }
         }
+        if !outside.isEmpty { ctx.setFillColor(C.wave.cgColor); ctx.fill(outside) }
+        if !inside.isEmpty { ctx.setFillColor(C.selWave.cgColor); ctx.fill(inside) }
 
         // 我的录音：跟原声共用一条秒数轴，念得慢尾巴就伸出去，一眼看得见
         if hasMe {
@@ -236,19 +267,30 @@ final class WaveUIView: UIView {
             ctx.strokePath()
             let mid = meTop + meH / 2
             let sr = 16000.0
-            ctx.setFillColor(C.waveMe.cgColor)
-            for px in 0..<Int(W) {
-                let t0 = t(CGFloat(px)) - meStart, t1 = t(CGFloat(px + 1)) - meStart
-                var i0 = Int(t0 * sr), i1 = Int(t1 * sr)
-                if i1 <= 0 || i0 >= mePcm.count { continue }
-                i0 = max(0, i0); i1 = min(mePcm.count, max(i0 + 1, i1))
-                var lo: Float = 0, hi: Float = 0
-                var i = i0
-                let step = max(1, (i1 - i0) / 200)
-                while i < i1 { let v = mePcm[i]; if v < lo { lo = v }; if v > hi { hi = v }; i += step }
-                let y1 = mid - CGFloat(hi) * (meH / 2 - 3), y2 = mid - CGFloat(lo) * (meH / 2 - 3)
-                ctx.fill(CGRect(x: CGFloat(px), y: y1, width: 1, height: max(1, y2 - y1)))
+            let mkey = (Int(W), view0, view1, mePcm.count)
+            if mkey != meKey || meCache.count != Int(W) {          // 同样只在视窗变了才重算
+                var c: [(Float, Float)] = []; c.reserveCapacity(Int(W))
+                for px in 0..<Int(W) {
+                    let t0 = t(CGFloat(px)) - meStart, t1 = t(CGFloat(px + 1)) - meStart
+                    var i0 = Int(t0 * sr), i1 = Int(t1 * sr)
+                    if i1 <= 0 || i0 >= mePcm.count { c.append((0, 0)); continue }
+                    i0 = max(0, i0); i1 = min(mePcm.count, max(i0 + 1, i1))
+                    var lo: Float = 0, hi: Float = 0
+                    var i = i0
+                    let step = max(1, (i1 - i0) / 200)
+                    while i < i1 { let v = mePcm[i]; if v < lo { lo = v }; if v > hi { hi = v }; i += step }
+                    c.append((lo, hi))
+                }
+                meCache = c; meKey = mkey
             }
+            var meRects: [CGRect] = []; meRects.reserveCapacity(Int(W))
+            for px in 0..<min(Int(W), meCache.count) {
+                let (lo, hi) = meCache[px]
+                if lo == 0 && hi == 0 { continue }
+                let y1 = mid - CGFloat(hi) * (meH / 2 - 3), y2 = mid - CGFloat(lo) * (meH / 2 - 3)
+                meRects.append(CGRect(x: CGFloat(px), y: y1, width: 1, height: max(1, y2 - y1)))
+            }
+            if !meRects.isEmpty { ctx.setFillColor(C.waveMe.cgColor); ctx.fill(meRects) }
             let lab = NSAttributedString(string: "我的", attributes: [
                 .font: UIFont.systemFont(ofSize: 9), .foregroundColor: C.rulerInk])
             lab.draw(at: CGPoint(x: 4, y: meTop + 3))
