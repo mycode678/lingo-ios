@@ -103,6 +103,9 @@ struct Compare {
             // 连读：两词之间几乎没有间隙
             let natGap = i + 1 < pairs.count ? pairs[i+1].0.s - n.e : 1
             let myGap = i + 1 < pairs.count ? pairs[i+1].1.start - m.end : 1
+            // 判"你连上了没"要比判原声宽松：母语者是 20 毫秒以内，
+            // 真人只要没有明显停顿（60 毫秒）就算连上了 —— 卡太死会让人觉得
+            // "我明明连了却给 0 分"。
             c.words.append(WordDiff(
                 id: i, text: n.w,
                 natStart: n.s, natEnd: n.e,
@@ -111,7 +114,7 @@ struct Compare {
                 isFunction: functionWords.contains(norm(n.w)),
                 natWeak: weak,
                 linkAfter: natGap < 0.02,
-                myLinkAfter: myGap < 0.02,
+                myLinkAfter: myGap < 0.06,
                 natStressed: stressed))
         }
 
@@ -140,7 +143,10 @@ struct Compare {
             // 虚词的偏差加倍计入 —— 那才是听起来"像中式英语"的根源
             err += abs(natFrac - myFrac) * (w.isFunction ? 2 : 1)
         }
-        return clamp(100 - Int(err * 260))
+        // 注意这里比的是**占比**，整句念慢了不扣分（那是速度，不是节奏），
+        // 只有"该轻的念重了、该重的念轻了"才扣。系数 120 是按实测标定的：
+        // 原来 260 太陡，稍微慢一点就直接 0 分（真机上就这么翻车的）。
+        return clamp(100 - Int(err * 120))
     }
 
     /// 连读：原声连读的地方你连上了几处

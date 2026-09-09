@@ -156,7 +156,15 @@ final class Recorder: NSObject, ObservableObject {
             } else {
                 message = "正在逐词比对…"
                 do {
-                    let myWords = try await Aligner.shared.align(pcm: mine, text: sentence!.en)
+                    // 先剪掉首尾静音再对齐。
+                    // 人按下录音键到真正开口，中间总有半秒到一秒；这段静音不剪掉，
+                    // 整条时间轴都被推后，每个词的时长占比全算错（节奏分会莫名其妙很低）。
+                    let (trimmed, lead) = Self.trimSilence(mine)
+                    let myWords = try await Aligner.shared.align(pcm: trimmed, text: sentence!.en)
+                        .map { w in
+                            // 时间轴换回原录音的坐标，不然点词回放会对不上
+                            var v = w; v.start += lead; v.end += lead; return v
+                        }
                     let d = Compare.make(nat: natWords, mine: myWords, natPCM: nat, myPCM: mine)
                     if d.words.isEmpty {
                         message = "对不上词：原声 \(natWords.count) 个，你的 \(myWords.count) 个"
@@ -245,6 +253,43 @@ final class Recorder: NSObject, ObservableObject {
     }
 
     // MARK: - 特征与打分（跟电脑版同一套）
+
+    /// 剪掉首尾静音，返回剪完的波形和"前面剪掉了多少秒"。
+    /// 判据是短时能量：连续 100 毫秒超过阈值才算开口，避免被一次呼吸声骗到。
+    static func trimSilence(_ pcm: [Float], sr: Double = 16000) -> ([Float], Double) {
+        guard pcm.count > 1600 else { return (pcm, 0) }
+        let win = Int(sr * 0.02)                       // 20 毫秒一格
+        var energy: [Float] = []
+        energy.reserveCapacity(pcm.count / win + 1)
+        var i = 0
+        while i < pcm.count {
+            let j = min(pcm.count, i + win)
+            var sum: Float = 0
+            for k in i..<j { sum += pcm[k] * pcm[k] }
+            energy.append((sum / Float(j - i)).squareRoot())
+            i = j
+        }
+        guard let peak = energy.max(), peak > 0.001 else { return (pcm, 0) }
+        let th = peak * 0.06                           // 峰值的 6%
+        let need = 5                                   // 连着 5 格＝100 毫秒才算数
+        var first = 0, last = energy.count - 1
+        var run = 0
+        for (k, e) in energy.enumerated() where e > th {
+            run += 1
+            if run >= need { first = max(0, k - run + 1); break }
+        }
+        run = 0
+        for k in stride(from: energy.count - 1, through: 0, by: -1) where energy[k] > th {
+            run += 1
+            if run >= need { last = min(energy.count - 1, k + run - 1); break }
+        }
+        guard last > first else { return (pcm, 0) }
+        // 前后各留 60 毫秒余量，别把起音和余音剪掉（虚词的起音很轻，剪狠了就没了）
+        let pad = Int(sr * 0.06)
+        let a = max(0, first * win - pad)
+        let b = min(pcm.count, (last + 1) * win + pad)
+        return (Array(pcm[a..<b]), Double(a) / sr)
+    }
 
     private func loadPCM16k(_ url: URL) throws -> [Float] {
         let f = try AVAudioFile(forReading: url)

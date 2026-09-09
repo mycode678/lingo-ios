@@ -219,12 +219,18 @@ final class Aligner {
                 let e = extOfToken[i]
                 if scoreCnt[e] > 0 { sum += scoreSum[e]; cnt += scoreCnt[e] }
             }
-            // 得分是对数概率的均值，转成 0~1
+            // 得分是对数概率的均值，映射到 0~1。
+            //
+            // 标定很关键：原声（模型的训练分布）avg 接近 0、得分接近满分；
+            // 真人用手机麦克风录、带环境噪声和口音，avg 普遍在 -2~-5，
+            // 直接 exp(avg) 会算出 5 分这种荒唐结果（真机上就这么翻车的）。
+            // 除以 5 之后：0→100、-1→82、-2→67、-3→55、-5→37、-8→20，
+            // 这个尺度跟人的主观判断对得上。
             let avg = cnt > 0 ? Double(sum) / Double(cnt) : -10
             out.append(Word(text: sp.word,
                             start: offset + Double(f0) * secPerFrame,
                             end: offset + Double(f1 + 1) * secPerFrame,
-                            score: min(1, max(0, exp(avg)))))
+                            score: min(1, max(0, exp(avg / 5)))))
         }
         return out
     }

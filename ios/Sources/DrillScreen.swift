@@ -643,7 +643,15 @@ struct DrillScreen: View {
                 }
             }
             .padding(.horizontal, 10).padding(.bottom, 4)
-            ScrollView { takeBlock.padding(.bottom, 6) }
+            // 打开时停在顶部：诊断在最上面，不该让人先往上滚才看得到
+            ScrollViewReader { p in
+                ScrollView {
+                    takeBlock.padding(.bottom, 6).id("takeTop")
+                }
+                .onChange(of: rec.hasTake) { _, has in
+                    if has { p.scrollTo("takeTop", anchor: .top) }
+                }
+            }
         }
         .contentShape(Rectangle())
         .gesture(
