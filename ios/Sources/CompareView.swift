@@ -114,24 +114,30 @@ struct CompareView: View {
 
     // MARK: ③ 三个分项
 
+    /// 三个分项等宽排一行。
+    /// 必须**顶部对齐 + 等宽**：字号调大后有的说明折两行、有的一行，
+    /// 默认的居中对齐会让没折行的那项浮在半空（他截图里"连读 63"就是）。
     private var scores: some View {
-        HStack(spacing: T.s4) {
-            item("音准", diff.soundScore, "每个音念得像不像")
-            item("节奏", diff.rhythmScore, "轻重快慢像不像")
-            item("连读", diff.linkScore, "该连的连上没")
-            Spacer(minLength: 0)
+        HStack(alignment: .top, spacing: T.s2) {
+            item("音准", diff.soundScore, "发音像不像")
+            item("节奏", diff.rhythmScore, "轻重快慢")
+            item("连读", diff.linkScore, "该连的连了没")
         }
     }
 
     private func item(_ k: String, _ v: Int, _ hint: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(k).font(.system(size: fBody)).foregroundStyle(.secondary)
                 Text("\(v)").font(.system(size: fNum, weight: .semibold))
                     .monospacedDigit().foregroundStyle(T.Score.of(v))
             }
-            Text(hint).font(.system(size: fSmall)).foregroundStyle(.tertiary)
+            .lineLimit(1).minimumScaleFactor(0.7)
+            Text(hint)
+                .font(.system(size: fSmall)).foregroundStyle(.tertiary)
+                .lineLimit(1).minimumScaleFactor(0.7)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var legend: some View {
