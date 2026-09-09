@@ -232,6 +232,9 @@ final class Recorder: NSObject, ObservableObject {
     func playWordAB(nat: ClosedRange<Double>, mine: ClosedRange<Double>,
                     done: (() -> Void)? = nil) {
         stopPlayback()
+        // 借用播放器放那半秒之前，先记下它原来在放哪一段，放完还回去 ——
+        // 不还的话，用户接着点小句会发现"怎么还在响刚才那个词"（踩过）。
+        let saved = Player.shared.segment
         Player.shared.loop = false
         Player.shared.claim(loop: false, segment: nat)
         Player.shared.play(from: nat.lowerBound)
@@ -239,6 +242,7 @@ final class Recorder: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + natLen + 0.28) { [weak self] in
             guard let self else { return }
             Player.shared.pause()
+            Player.shared.claim(loop: false, segment: saved)     // 区间还回去
             self.playMineSegment(mine)
             DispatchQueue.main.asyncAfter(deadline: .now() + (mine.upperBound - mine.lowerBound) + 0.2) {
                 done?()

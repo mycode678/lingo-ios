@@ -785,7 +785,14 @@ struct DrillScreen: View {
             // 点几次就放几次这一小句 —— 反复练一小句是精听最常做的事，
             // 第二下跳回整句等于逼着人"取消再重选"（上一版就是这么设计错的）。
             // 要回整句：右边那个「整句」键，或者双击这个小句。
+            //
+            // 注意必须重新 claim 区间，不能只发一句 play() ——
+            // 中间要是点过"比对结果里的某个词"，播放器的区间还停在那个词上，
+            // 再点小句就只会响那个词（他碰上过）。
             if on {
+                player.claim(loop: player.loop, times: loopTimes,
+                             segment: vm.selection,
+                             onEnd: { autoAdvance(after: store.current?.src ?? "") })
                 player.play(from: vm.selection?.lowerBound ?? 0)
             } else {
                 vm.selectChunk(i)
