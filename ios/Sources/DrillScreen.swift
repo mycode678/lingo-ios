@@ -497,7 +497,6 @@ struct DrillScreen: View {
 
     /// 波形顶上那行词占多高（没对齐好、没词的时候是 0）
     private var wordRowH: CGFloat { vm.words.isEmpty ? 0 : 22 }
-    }
 
     /// 左上角：在练哪个词第几句（顶栏拆掉之后这个信息挪到这儿）
     @ViewBuilder private var leading: some View {
