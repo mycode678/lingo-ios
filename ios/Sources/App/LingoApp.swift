@@ -16,6 +16,7 @@ struct LingoApp: App {
     @StateObject private var store = Store.shared
     @StateObject private var player = Player.shared
     @StateObject private var nav = Nav.shared
+    @StateObject private var env = AppEnv.shared
     @AppStorage("ui.accent") private var accent = "#2f6fd0"
     @AppStorage("ui.scheme") private var scheme = "system"
 
@@ -39,7 +40,9 @@ struct LingoApp: App {
     }
 
     @ViewBuilder private var rootView: some View {
-        if Demo.alignBench {
+        if ProcessInfo.processInfo.arguments.contains("-dbtest") {
+            DBSelfTest()
+        } else if Demo.alignBench {
             if #available(iOS 17.0, *) { AlignBenchView() } else { Text("需要 iOS 17") }
         } else if Demo.land {
             GeometryReader { g in                 // 截横屏专用：按横屏尺寸渲染再转 90 度
@@ -64,6 +67,7 @@ struct LingoApp: App {
             .environmentObject(store)
             .environmentObject(player)
             .environmentObject(nav)
+            .environmentObject(env)
             .tint(Color(hex: accent))
             .preferredColorScheme(scheme == "light" ? .light : (scheme == "dark" ? .dark : nil))
             .task {

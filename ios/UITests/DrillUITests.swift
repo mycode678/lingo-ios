@@ -273,3 +273,31 @@ final class AlignerUITests: XCTestCase {
         XCTAssertTrue(ok.label.contains("通过"), "对齐质量不达标：" + ok.label)
     }
 }
+
+/// 本机库：这是"脱离服务器"的地基，必须钉死。
+/// 验的是**真机上杀掉 App 再打开数据还在**，以及迁移跑两遍不出错。
+final class DBUITests: XCTestCase {
+    private func val(_ app: XCUIApplication, _ id: String) -> String {
+        let e = app.staticTexts[id]
+        return e.waitForExistence(timeout: 20) ? e.label : "（没出现：\(id)）"
+    }
+
+    func testLocalDBSurvivesRelaunch() {
+        // 第一趟：建库、迁移两遍、写一条进度
+        let a = XCUIApplication()
+        a.launchArguments = ["-dbtest", "-dbwrite"]
+        a.launch()
+        XCTAssertEqual(val(a, "dbVersion"), "1", "库版本不对")
+        XCTAssertEqual(val(a, "dbIdempotent"), "一样，OK", "迁移跑两遍结果不一样")
+        XCTAssertEqual(val(a, "dbTables"), "六张都在", "表结构不对")
+        XCTAssertEqual(val(a, "dbText"), "OK", "中文存取串了")
+        XCTAssertEqual(val(a, "dbWrote"), "写好了", "没写进去")
+        a.terminate()
+
+        // 第二趟：App 是真的被杀掉之后重开的，数据必须还在
+        let b = XCUIApplication()
+        b.launchArguments = ["-dbtest"]
+        b.launch()
+        XCTAssertEqual(val(b, "dbReadBack"), "值一样，OK", "重开之后数据没了或对不上")
+    }
+}
