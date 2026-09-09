@@ -22,6 +22,9 @@ final class Recorder: NSObject, ObservableObject {
     @Published private(set) var curve: (nat: [Double], mine: [Double?], rms: [Double])?
     /// 刚录的那一条（16k 单声道），画在波形下面跟原声对齐着看
     @Published private(set) var takePCM: [Float] = []
+    /// 逐词比对的结果（哪个词不准、重音在哪、该连读的连没连、一句话诊断）。
+    /// 手机上现算，不联网。
+    @Published private(set) var diff: Compare?
 
     /// 只给截图用：假装刚录完一条，好把"跟读结果"那块渲染出来自查。
     /// 真机上永远走不到（Demo.on 只有 -demo 启动才是 true）。
@@ -61,7 +64,7 @@ final class Recorder: NSObject, ObservableObject {
 
     func reset() {
         stopPlayback()
-        hasTake = false; heard = nil; wrongWords = []; score = nil; message = nil
+        hasTake = false; heard = nil; wrongWords = []; score = nil; message = nil; diff = nil
         heardAttributed = AttributedString("")
         curve = nil
         takePCM = []
@@ -100,7 +103,8 @@ final class Recorder: NSObject, ObservableObject {
         }
     }
 
-    func stop(sentence: Api.Sentence?, autoAB: Bool, range: ClosedRange<Double>?) {
+    func stop(sentence: Api.Sentence?, natWords: [Api.Word] = [],
+              autoAB: Bool, range: ClosedRange<Double>?) {
         guard isRecording else { return }
         recorder?.stop(); recorder = nil
         isRecording = false
@@ -109,7 +113,7 @@ final class Recorder: NSObject, ObservableObject {
         let s = AVAudioSession.sharedInstance()
         try? s.setCategory(.playback, mode: .spokenAudio, options: [.allowBluetoothA2DP, .allowAirPlay])
         try? s.setActive(true)
-        Task { await analyse(sentence: sentence, autoAB: autoAB, range: range) }
+        Task { await analyse(sentence: sentence, natWords: natWords, autoAB: autoAB, range: range) }
     }
 
     private func requestMic() async -> Bool {
@@ -120,7 +124,8 @@ final class Recorder: NSObject, ObservableObject {
 
     // MARK: - 分析
 
-    private func analyse(sentence: Api.Sentence?, autoAB: Bool, range: ClosedRange<Double>?) async {
+    private func analyse(sentence: Api.Sentence?, natWords: [Api.Word],
+                         autoAB: Bool, range: ClosedRange<Double>?) async {
         guard let mine = try? loadPCM16k(fileURL) else { message = "读不到刚才的录音"; return }
         takePCM = mine
         guard mine.count > 16000 / 8 else { message = "没录到声音，再来一次"; return }
@@ -133,6 +138,24 @@ final class Recorder: NSObject, ObservableObject {
         score = Score(words: nil, tone: g.tone, rhythm: g.rhythm)
         message = nil
         if autoAB { playAB(range: range) }
+
+        // 逐词比对：把你的录音也对齐一遍，跟原声逐词比。
+        // 全在手机上算（模型已验证和服务器一致，误差 6 毫秒），不联网、录音不出手机。
+        if #available(iOS 17.0, *), Aligner.shared.isAvailable,
+           !natWords.isEmpty, let text = sentence?.en {
+            message = "正在逐词比对…"
+            do {
+                let myWords = try await Aligner.shared.align(pcm: mine, text: text)
+                diff = Compare.make(nat: natWords, mine: myWords, natPCM: nat, myPCM: mine)
+                if let d = diff {
+                    score = Score(words: d.soundScore, tone: g.tone, rhythm: d.rhythmScore)
+                }
+                message = nil
+            } catch {
+                // 对齐失败不影响别的结果，说清楚就行
+                message = "逐词比对没跑成：\(error.localizedDescription)"
+            }
+        }
 
         // 机器听写：本机 whisper，录音只在自己家里流转
         if let wav = try? Data(contentsOf: fileURL), let en = sentence?.en {
@@ -174,6 +197,36 @@ final class Recorder: NSObject, ObservableObject {
         }
     }
     func stopPlayback() { player?.stop(); player = nil }
+
+    /// 单独听一个词：先原声那半秒，再你念的那半秒。
+    /// 这是"听出差别"最直接的办法 —— 整句里听不出来的毛病，
+    /// 单个词一前一后放两遍，一耳朵就知道差在哪。
+    func playWordAB(nat: ClosedRange<Double>, mine: ClosedRange<Double>,
+                    done: (() -> Void)? = nil) {
+        stopPlayback()
+        Player.shared.loop = false
+        Player.shared.claim(loop: false, segment: nat)
+        Player.shared.play(from: nat.lowerBound)
+        let natLen = (nat.upperBound - nat.lowerBound) / Double(Player.shared.rate)
+        DispatchQueue.main.asyncAfter(deadline: .now() + natLen + 0.28) { [weak self] in
+            guard let self else { return }
+            Player.shared.pause()
+            self.playMineSegment(mine)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (mine.upperBound - mine.lowerBound) + 0.2) {
+                done?()
+            }
+        }
+    }
+
+    /// 只放自己录音里的某一段
+    private func playMineSegment(_ r: ClosedRange<Double>) {
+        guard let p = try? AVAudioPlayer(contentsOf: fileURL) else { return }
+        player = p
+        p.currentTime = max(0, r.lowerBound)
+        p.play()
+        let len = r.upperBound - r.lowerBound
+        DispatchQueue.main.asyncAfter(deadline: .now() + len) { [weak p] in p?.stop() }
+    }
 
     // MARK: - 特征与打分（跟电脑版同一套）
 

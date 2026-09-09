@@ -189,7 +189,7 @@ struct DrillScreen: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    rec.isRecording ? rec.stop(sentence: store.current, autoAB: autoAB, range: vm.selection)
+                    rec.isRecording ? rec.stop(sentence: store.current, natWords: vm.words, autoAB: autoAB, range: vm.selection)
                                     : rec.start()
                 } label: {
                     Label(rec.isRecording ? "停止" : "录音",
@@ -802,6 +802,11 @@ struct DrillScreen: View {
 
     private var takeBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // 逐词比对（手机上现算的）—— 有它就以它为主，它比听写文本有用得多
+            if let d = rec.diff {
+                CompareView(diff: d)
+                Divider()
+            }
             if let h = rec.heard, !h.isEmpty {
                 Text(rec.heardAttributed).font(.system(size: 15))
                 if !rec.wrongWords.isEmpty {
