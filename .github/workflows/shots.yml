@@ -121,12 +121,16 @@ jobs:
           UDID=$(xcrun simctl list devices available | grep -m1 "iPhone 15 Pro Max (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
           echo "在 $UDID 上跑交互测试"
           set -o pipefail
-          # 对齐验证跳过：它要 181M 的 CoreML 模型，模型不进仓库（超 GitHub 单文件上限），
-          # 那条只在接了真机的 Mac 上跑。
+          # 两条只在真机上跑，云端跳过：
+          # · AlignerUITests 要 181M 的 CoreML 模型，模型不进仓库（超 GitHub 单文件上限）
+          # · ShotUITests 是给真机导出截图用的，它会 terminate 一个 App 再 activate 另一个，
+          #   在模拟器上常报 "Failed to get background assertion for target app"。
+          #   云端的截图本来就由上面 simctl 那一步出，不需要它。
           xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
             -destination "platform=iOS Simulator,id=$UDID" \
             -only-testing:LingoUITests \
             -skip-testing:LingoUITests/AlignerUITests \
+            -skip-testing:LingoUITests/ShotUITests \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee /tmp/test.log \
             | grep -E "Test Case|error:|\*\* TEST" | tail -40
           # 失败时把真正的原因贴出来（只 grep "Test Case" 会把编译错、崩溃原因全滤掉）
@@ -135,6 +139,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true      # 传产物是诊断用的，GitHub 自己超时不该把整轮判红
         with:
           name: screenshots
           path: ios/shots/*.png
@@ -143,6 +148,7 @@ jobs:
       # 体检报告也要能拿回来看 —— 光看截图估不准高度，得看真数字
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: audit-logs
           path: ios/audit-*.log
