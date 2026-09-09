@@ -811,6 +811,17 @@ struct DrillScreen: View {
 
     private var takeBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // 出了岔子要显眼地说 —— 之前这行藏在最底下 11pt 灰字里，等于没有
+            if let m = rec.message {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(m).font(.system(size: T.f2))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
             // 逐词比对（手机上现算的）—— 有它就以它为主，它比听写文本有用得多
             if let d = rec.diff {
                 CompareView(diff: d)
@@ -837,7 +848,7 @@ struct DrillScreen: View {
                         .frame(height: 96)
                 }
             }
-            if let m = rec.message { Text(m).font(.system(size: 11)).foregroundStyle(.secondary) }
+
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)

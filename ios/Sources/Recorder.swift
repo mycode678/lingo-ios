@@ -143,20 +143,34 @@ final class Recorder: NSObject, ObservableObject {
 
         // 逐词比对：把你的录音也对齐一遍，跟原声逐词比。
         // 全在手机上算（模型已验证和服务器一致，误差 6 毫秒），不联网、录音不出手机。
-        if #available(iOS 17.0, *), Aligner.shared.isAvailable,
-           !natWords.isEmpty, let text = sentence?.en {
-            message = "正在逐词比对…"
-            do {
-                let myWords = try await Aligner.shared.align(pcm: mine, text: text)
-                diff = Compare.make(nat: natWords, mine: myWords, natPCM: nat, myPCM: mine)
-                if let d = diff {
-                    score = Score(words: d.soundScore, tone: g.tone, rhythm: d.rhythmScore)
+        //
+        // 这里的每个"跑不了"都要说清原因 —— 上一版是静默跳过，
+        // 界面上只能看到老的分数，根本不知道哪一步没走通。
+        if #available(iOS 17.0, *) {
+            if !Aligner.shared.isAvailable {
+                message = "这个安装包里没带对齐模型，逐词比对用不了"
+            } else if natWords.isEmpty {
+                message = "这句还没切好词，逐词比对要等切词完成"
+            } else if (sentence?.en ?? "").isEmpty {
+                message = "没有原文，没法逐词比对"
+            } else {
+                message = "正在逐词比对…"
+                do {
+                    let myWords = try await Aligner.shared.align(pcm: mine, text: sentence!.en)
+                    let d = Compare.make(nat: natWords, mine: myWords, natPCM: nat, myPCM: mine)
+                    if d.words.isEmpty {
+                        message = "对不上词：原声 \(natWords.count) 个，你的 \(myWords.count) 个"
+                    } else {
+                        diff = d
+                        score = Score(words: d.soundScore, tone: g.tone, rhythm: d.rhythmScore)
+                        message = nil
+                    }
+                } catch {
+                    message = "逐词比对没跑成：\(error.localizedDescription)"
                 }
-                message = nil
-            } catch {
-                // 对齐失败不影响别的结果，说清楚就行
-                message = "逐词比对没跑成：\(error.localizedDescription)"
             }
+        } else {
+            message = "逐词比对需要 iOS 17 以上"
         }
 
         // 机器听写：本机 whisper，录音只在自己家里流转
