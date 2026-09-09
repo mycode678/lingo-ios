@@ -133,6 +133,7 @@ struct DrillScreen: View {
             // 体检结果的出口。必须两个方向都有：横屏才是最容易挤重叠的方向，
             // 原来只写在竖屏里，横屏那份体检永远是"没拿到"。
             .overlay(alignment: .topLeading) { if Audit.on { AuditProbe() } }
+            .overlay(alignment: .topTrailing) { if Api.offline { NetProbe() } }
             // 这几个设置改完要立刻送到播放器。原来挂在 transport 上，
             // 而 transport 只有竖屏用，横屏改了得等切下一句才生效。
             .onChange(of: gapIn) { _, v in player.gapIn = v }

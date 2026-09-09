@@ -303,3 +303,33 @@ final class DBUITests: XCTestCase {
         XCTAssertEqual(val(b, "dbReadBack"), "值一样，OK", "重开之后数据没了或对不上")
     }
 }
+
+/// 断网演练：服务器全挂的时候，核心功能还能不能用。
+///
+/// 这一条才是"脱离服务器"的真验收 —— 不是"确认 App 从不联网"
+/// （顺手备份是合理的），而是**所有请求都失败时，听、划、打分、复习照常**。
+final class OfflineUITests: XCTestCase {
+    func testCoreLoopWorksWithServerDown() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-screen", "drill", "-nonet"]
+        app.launch()
+
+        // 1) 波形出得来（音频、词边界都不靠服务器）
+        XCTAssertTrue(app.otherElements["waveform"].waitForExistence(timeout: 20), "断网就没波形了")
+        // 2) 小句出得来（说明词边界到位）
+        let chunk = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'Excuse me can you tell'")).firstMatch
+        XCTAssertTrue(chunk.waitForExistence(timeout: 20), "断网就切不出小句")
+        chunk.tap()
+        // 3) 打分要能算出下次复习时间 —— 这一步以前是发请求给服务器算的
+        XCTAssertTrue(app.buttons["会了"].waitForExistence(timeout: 5), "找不到打分键")
+        app.buttons["会了"].tap()
+        let flash = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '下次'")).firstMatch
+        XCTAssertTrue(flash.waitForExistence(timeout: 5),
+                      "断网时打分没算出下次复习时间（说明还在等服务器）；" + dump(app))
+        // 4) 顺手看看这一段里谁想联网、被挡了几次（不做断言，只写进日志）
+        let probe = app.otherElements["netBlocked"]
+        if probe.waitForExistence(timeout: 3) { print("【断网演练】被挡下的请求：" + probe.label) }
+    }
+}

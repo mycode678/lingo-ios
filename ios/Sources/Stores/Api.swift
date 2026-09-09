@@ -102,7 +102,24 @@ enum Api {
         return URLSession(configuration: c, delegate: CertTrust.shared, delegateQueue: nil)
     }()
 
+    // MARK: 断网演练
+    //
+    // `-nonet` 启动时，**所有**请求立刻失败，并记一笔。
+    // 这是 B4 的验收工具：不是"确认 App 从不联网"（有些地方联网是合理的备份），
+    // 而是"服务器全挂的情况下，核心功能还能不能用"。
+    // 只有断网还能听、能划、能打分、能复习，才算真的脱离服务器。
+    static var offline: Bool { ProcessInfo.processInfo.arguments.contains("-nonet") }
+    /// 断网演练时被挡下来的请求（测试读它，看看到底谁在联网）
+    nonisolated(unsafe) static private(set) var blockedCalls: [String] = []
+
+    private static func guardOffline(_ path: String) throws {
+        guard offline else { return }
+        blockedCalls.append(path)
+        throw Err.offline
+    }
+
     static func get<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
+        try guardOffline(path)
         var r = URLRequest(url: url(path))
         if let a = authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
         let (d, resp) = try await session.data(for: r)
@@ -112,6 +129,7 @@ enum Api {
 
     @discardableResult
     static func post<T: Decodable>(_ path: String, _ body: [String: Any], as: T.Type) async throws -> T {
+        try guardOffline(path)
         var r = URLRequest(url: url(path))
         r.httpMethod = "POST"
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -126,11 +144,12 @@ enum Api {
 
     /// 服务器现在一律要账号密码，401 要说人话，别让人对着解码失败发呆
     enum Err: LocalizedError {
-        case unauthorized, http(Int)
+        case unauthorized, http(Int), offline
         var errorDescription: String? {
             switch self {
             case .unauthorized: return "账号或密码不对（在设置里填服务器账号密码）"
             case .http(let c):  return "服务器返回 \(c)"
+            case .offline:      return "断网演练：这次请求被挡下了"
             }
         }
     }

@@ -100,3 +100,23 @@ struct AuditProbe: View {
             .accessibilityLabel(r.text)
     }
 }
+
+/// 断网演练的出口。`-nonet` 时挂在精听台上，UI 测试读它就知道
+/// 这一段操作里到底有谁想联网、被挡了几次。
+struct NetProbe: View {
+    @State private var text = "0"
+    var body: some View {
+        Color.clear.frame(width: 1, height: 1)
+            .accessibilityIdentifier("netBlocked")
+            .accessibilityLabel(text)
+            .task {
+                // 轮询就够了：这只是测试用的探针，不值得为它上发布订阅
+                while !Task.isCancelled {
+                    let c = Api.blockedCalls
+                    let t = "\(c.count)|" + Set(c).sorted().joined(separator: ",")
+                    if t != text { text = t }
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                }
+            }
+    }
+}
