@@ -39,6 +39,7 @@ struct DrillScreen: View {
     @AppStorage("drill.volKeys") private var volKeys = false
     @AppStorage("drill.autoPlay") private var autoPlay = true       // 切到一句就自动响
     @AppStorage("drill.boostHF") private var boostHF = true         // 听辅音（高频增强）
+    @AppStorage("ui.resultFont") private var resultFont = 17.0      // 跟读结果的字号，用户自己调
     /// 倍速档位自己定：慢到 0.4 快到 2.0，几档也自己定（2~5 档）。
     /// 存成一串逗号分隔的数，简单、好迁移；解析不出来就退回默认四档。
     @AppStorage("drill.rates") private var ratesCSV = "1.0,0.75,0.6,0.5"
@@ -420,7 +421,7 @@ struct DrillScreen: View {
             .overlay(alignment: .bottom) {
                 if rec.hasTake && showTake {
                     takePanel
-                        .frame(maxHeight: geo.size.height * 0.46)
+                        .frame(maxHeight: geo.size.height * 0.56)   // 字号可调大，留够高度
                         .background(.ultraThinMaterial)
                         .transition(.move(edge: .bottom))
                 }
@@ -1049,7 +1050,20 @@ struct DrillScreen: View {
                 } header: { Text("听感") } footer: {
                     Text("把 2.5kHz 以上抬高一点，句尾的 t/s/k 这些辅音会清楚很多，专抠连读用。")
                 }
-                Section("跟读") { Toggle("录完自动对比播放", isOn: $autoAB) }
+                Section {
+                    Toggle("录完自动对比播放", isOn: $autoAB)
+                    HStack {
+                        Text("结果字号")
+                        Slider(value: $resultFont, in: 14...28, step: 1)
+                        Text("\(Int(resultFont))").monospacedDigit()
+                            .foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
+                    }
+                    // 边拖边看，调到舒服为止
+                    Text("这句念得很接近母语者了，节奏和连读都对。")
+                        .font(.system(size: resultFont)).foregroundStyle(.secondary)
+                } header: { Text("跟读") } footer: {
+                    Text("跟读结果里的诊断、词块、分数会跟着这个字号变大变小。")
+                }
                 Section("显示") {
                     Text("原文、译文、中英文释义都在底部那个「显示」里勾 —— "
                          + "默认一个都不显示，先听声音，听不出来再翻答案。")

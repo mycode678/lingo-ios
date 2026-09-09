@@ -10,6 +10,13 @@ struct CompareView: View {
     let diff: Compare
     @ObservedObject var rec = Recorder.shared
     @State private var playing: Int?
+    /// 跟读结果这块的字号，用户自己调（精听设置里）。
+    /// 默认 17 —— 之前按 13/15 排，他在 6.5 寸屏上还是嫌小。
+    @AppStorage("ui.resultFont") private var base = 17.0
+    private var fSmall: CGFloat { CGFloat(base) - 3 }
+    private var fBody: CGFloat { CGFloat(base) }
+    private var fWord: CGFloat { CGFloat(base) + 2 }
+    private var fNum: CGFloat { CGFloat(base) + 7 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: T.s3) {
@@ -27,13 +34,13 @@ struct CompareView: View {
             ForEach(diff.notes) { n in
                 HStack(alignment: .top, spacing: T.s2) {
                     Image(systemName: icon(n.kind))
-                        .font(.system(size: T.f3))
+                        .font(.system(size: fBody))
                         .foregroundStyle(color(n.kind))
                         .frame(width: 20)
                     // 诊断是这块最该看清的东西 —— 15pt 起步，行距放开
                     Text(n.text)
-                        .font(.system(size: T.f3))
-                        .lineSpacing(3)
+                        .font(.system(size: fBody))
+                        .lineSpacing(fBody * 0.22)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
@@ -74,7 +81,7 @@ struct CompareView: View {
         let slow = w.isFunction && w.durRatio > 1.6      // 虚词念太长：中式英语的头号特征
         return VStack(spacing: 2) {
             Text(w.text)
-                .font(.system(size: T.f4, weight: w.natStressed ? .semibold : .regular))
+                .font(.system(size: fWord, weight: w.natStressed ? .semibold : .regular))
                 .foregroundStyle(playing == w.id ? Color.white : c)
             // 底下那条线的长短＝你念的时长相对原声。超过一格说明念长了。
             GeometryReader { g in
@@ -119,18 +126,18 @@ struct CompareView: View {
     private func item(_ k: String, _ v: Int, _ hint: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(k).font(.system(size: T.f3)).foregroundStyle(.secondary)
-                Text("\(v)").font(.system(size: T.f5, weight: .semibold))
+                Text(k).font(.system(size: fBody)).foregroundStyle(.secondary)
+                Text("\(v)").font(.system(size: fNum, weight: .semibold))
                     .monospacedDigit().foregroundStyle(T.Score.of(v))
             }
-            Text(hint).font(.system(size: T.f2)).foregroundStyle(.tertiary)
+            Text(hint).font(.system(size: fSmall)).foregroundStyle(.tertiary)
         }
     }
 
     private var legend: some View {
         Text("点任意一个词：先听母语者，再听你的。橙色下划线＝这个虚词念太长，"
              + "虚线框＝这儿该和下个词连读。")
-            .font(.system(size: T.f2)).foregroundStyle(.tertiary)
+            .font(.system(size: fSmall)).foregroundStyle(.tertiary)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
     }
