@@ -7,6 +7,7 @@ import SwiftUI
 /// 按图索骥，点开列表直接进行按步就班学习就好了。」
 struct PackStoreScreen: View {
     @EnvironmentObject var store: Store
+    @EnvironmentObject var nav: Nav
     @StateObject private var cat = CatalogService.shared
 
     @AppStorage("me.who") private var who = ""       // 我是谁：空＝不筛
@@ -143,9 +144,17 @@ struct PackStoreScreen: View {
                 }
                 Spacer()
                 if isOn(it.id) {
-                    Label("已装", systemImage: "checkmark.circle.fill")
-                        .font(.caption).foregroundStyle(T.Score.good).labelStyle(.iconOnly)
-                        .accessibilityLabel("已装")
+                    // 装完了得有地方去。原来这儿只有一个"已装"的对勾 ——
+                    // 用户下完包在界面上找不到任何入口（他原话："怎么学习它呢？好像没有接口啊"）。
+                    Button {
+                        store.loadPack(it.id, name: it.name)
+                        nav.tab = 2                    // 直接进精听台
+                    } label: {
+                        Label("开始学", systemImage: "play.fill")
+                            .font(.system(size: T.f2, weight: .medium))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("packs.start." + it.id)
                 } else if busy == it.id {
                     ProgressView()
                 } else {

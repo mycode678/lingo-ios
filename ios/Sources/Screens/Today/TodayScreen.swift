@@ -84,7 +84,15 @@ struct TodayScreen: View {
                 }
                 if freshN > 0 {
                     task("没练过的", "\(freshN) 句", "waveform",
-                         "圈出听不懂的半秒，反复听到听清") { nav.tab = 2 }
+                         "圈出听不懂的半秒，反复听到听清") {
+                        // 光切标签页没用 —— 精听台不会自己去读材料包，
+                        // 得把包装进去它才有句子（这一环之前是断的）。
+                        if store.items.isEmpty,
+                           let p = CatalogService.shared.packs().first {
+                            store.loadPack(p.id, name: p.name)
+                        }
+                        nav.tab = 2
+                    }
                 }
                 task("跟读打分", "随时", "mic",
                      "念一遍，看看哪个词跟母语者差得最远") { nav.tab = 2 }

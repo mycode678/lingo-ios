@@ -40,6 +40,14 @@ enum Api {
         var tag: String?
         var kind: String?
         var bold: [String]?
+        /// 这一句来自哪个**材料包**（nil = 来自词典查词那条老路）。
+        /// 有它才知道：音频在本机哪个文件、词边界从包里读而不是找服务器算。
+        /// 服务器不返回这两个字段，Codable 可选，老接口不受影响。
+        var packId: String?
+        /// **src 存的就是包里那条句子的 id**（形如 `longman-a1/12`），
+        /// 不能存音频的绝对路径 —— iOS 重装/升级时容器目录会换 UUID，
+        /// 路径当 id 用的话，用户攒的进度、收藏、难点全对不上号了。
+        /// 用句子 id 还有一个好处：跟七个练法那边记的是同一个 id，两边进度天然打通。
         var id: String { src }
     }
 

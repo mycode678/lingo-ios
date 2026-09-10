@@ -21,6 +21,26 @@ final class Store: ObservableObject {
 
     var current: Api.Sentence? { items.indices.contains(index) ? items[index] : nil }
 
+    /// 把一个**材料包**装进精听台。
+    ///
+    /// 这是之前漏掉的一环：包做好了、训练那七个练法也用上了，
+    /// 可精听台还只认"查词 → 例句"那条老路 —— 用户下完包发现没地方练，
+    /// 界面上一个入口都没有。
+    @MainActor
+    func loadPack(_ packId: String, name: String, catalog: CatalogService = .shared) {
+        let list = catalog.sentences(packId, limit: 400)
+        guard !list.isEmpty else { return }
+        word = name
+        items = list.map {
+            Api.Sentence(src: $0.id, en: $0.en, cn: $0.cn,
+                         grp: name, gnum: nil, dfe: nil, dcn: nil,
+                         tag: nil, kind: "pack", bold: nil, packId: packId)
+        }
+        index = 0
+        prog = [:]
+        inLib = true
+    }
+
     func look(_ w: String) async {
         let w = w.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !w.isEmpty else { return }
@@ -125,6 +145,12 @@ final class DrillModel: ObservableObject {
                 Player.shared.setSegment(selection, playNow: false)
             }
             loading = false
+            return
+        }
+        // 材料包里的句子：音频是本机文件，词边界打包时就算好了 ——
+        // 一次网都不用联。（老的"查词 → 例句"那条路在下面，走服务器。）
+        if let pid = s.packId {
+            await loadFromPack(s, pid, saved: saved)
             return
         }
         do {
@@ -251,6 +277,34 @@ final class DrillModel: ObservableObject {
     /// 补多少：往前借前一个词留下的那段间隙（那本来就是这个词的起音，
     /// 借了不会吃到上一个词），最多 90 毫秒、且不超过间隙的八成。
     /// 在这儿一次改掉，后面波形高亮、小句、吸附、播放就全都一致了。
+    /// 包里的句子怎么装：本机音频 + 包里预先算好的词边界
+    @MainActor
+    private func loadFromPack(_ s: Api.Sentence, _ packId: String,
+                              saved: ClosedRange<Double>?) async {
+        defer { loading = false }
+        let cat = CatalogService.shared
+        guard let sent = cat.sentences(packId, limit: 400).first(where: { $0.id == s.src }) else {
+            note = "这一句在包里找不到了 —— 包可能被删了，去材料库重新装一下"
+            return
+        }
+        do {
+            try Player.shared.load(local: sent.audio)
+        } catch {
+            note = "音频读不出来：\(error.localizedDescription)"
+            return
+        }
+        view = (0, Player.shared.duration)
+        words = Self.padOnsets(cat.words(packId, s.src).map { Api.Word(w: $0.w, s: $0.s, e: $0.e) },
+                               duration: Player.shared.duration)
+        chunks = Self.cutChunks(words)
+        marks = PracticeService.shared.marks(s.src).map { .init(id: nil, s: $0.0, e: $0.1) }
+        if let sv = saved, sv.upperBound <= Player.shared.duration + 0.01 {
+            selection = sv
+            Player.shared.setSegment(sv, playNow: false)
+        }
+        if words.isEmpty { note = "这一句包里没带词边界" }
+    }
+
     static func padOnsets(_ ws: [Api.Word], duration: Double) -> [Api.Word] {
         guard ws.count > 1 else { return ws }
         var out = ws

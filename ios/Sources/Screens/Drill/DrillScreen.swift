@@ -110,9 +110,32 @@ struct DrillScreen: View {
         }
     }
 
+    /// 空屏。原来只有一句"去查词点一条例句" —— 可他刚下完材料包，
+    /// 界面上却没有任何一处能把包里的句子放进来（他原话：「怎么学习它呢？好像没有接口啊」）。
+    /// 现在：装了包就直接把包列在这儿，点一下就开练。
     private var empty: some View {
-        ContentUnavailableView("还没选句子", systemImage: "waveform",
-            description: Text("去「查词」点一条例句，或者去「复习」拿今天到期的。"))
+        let packs = CatalogService.shared.packs()
+        return ContentUnavailableView {
+            Label(packs.isEmpty ? "还没有材料" : "挑一份材料开始", systemImage: "waveform")
+        } description: {
+            Text(packs.isEmpty
+                 ? "去「材料」里下一个包，下完断网也能练。"
+                 : "点下面任意一份，就从第一句开始。")
+        } actions: {
+            if packs.isEmpty {
+                Button("去材料库") { Nav.shared.tab = 1 }.buttonStyle(.borderedProminent)
+            } else {
+                ForEach(packs) { p in
+                    Button {
+                        store.loadPack(p.id, name: p.name)
+                    } label: {
+                        Text("\(p.name)　\(p.sentences) 句")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Button("去材料库找更多") { Nav.shared.tab = 1 }.buttonStyle(.borderless)
+            }
+        }
     }
 
     // MARK: - 主体
