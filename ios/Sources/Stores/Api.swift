@@ -93,7 +93,8 @@ enum Api {
 
     // MARK: - 传输
 
-    private static let session: URLSession = {
+    /// 材料包下载也用这一个（自签证书的信任逻辑在这儿）
+    static let session: URLSession = {
         let c = URLSessionConfiguration.default
         // 不要 waitsForConnectivity：连不上时它会一直等，界面就永远转圈（截图里抓到的）
         c.waitsForConnectivity = false

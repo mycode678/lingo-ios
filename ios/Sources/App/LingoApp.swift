@@ -68,7 +68,9 @@ struct LingoApp: App {
             TabView(selection: $nav.tab) {
                 TodayScreen().tabItem { Label("今天", systemImage: "sun.max") }
                     .badge(store.dueCount).tag(0)
-                DictScreen().tabItem { Label("材料", systemImage: "books.vertical") }.tag(1)
+                // 「材料」现在是材料库（按身份挑、按难度挑、可预览）。
+                // 查词挪到右上角 —— 它是朗文的内容，受版权限制，不该当门面。
+                PackStoreScreen().tabItem { Label("材料", systemImage: "books.vertical") }.tag(1)
                 DrillScreen().tabItem { Label("精听", systemImage: "waveform") }.tag(2)
                 LibScreen().tabItem { Label("我的", systemImage: "person") }.tag(3)
             }

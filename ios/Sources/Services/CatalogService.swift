@@ -99,6 +99,52 @@ final class CatalogService: ObservableObject {
                     installedAt: Date().timeIntervalSince1970)
     }
 
+    // MARK: 目录（能下哪些包）
+
+    struct RemoteItem: Codable, Identifiable {
+        var id: String, name: String, version: Int
+        var sentences: Int
+        var levels: [String: Int]
+        var restricted: Bool
+        var who: [String]
+        var url: String
+        var bytes: Int
+        var zip_sha256: String
+    }
+    private struct Catalog: Codable { var version: Int; var packs: [RemoteItem] }
+
+    /// 拉目录。**目录是唯一需要联网的一步** —— 装完包之后练习全程不联网。
+    func fetchCatalog() async throws -> [RemoteItem] {
+        let (d, resp) = try await Api.session.data(for: authed(Api.url("/packs/catalog.json")))
+        try Api.check(resp)
+        return try JSONDecoder().decode(Catalog.self, from: d).packs
+    }
+
+    private func authed(_ url: URL) -> URLRequest {
+        var r = URLRequest(url: url)
+        if let a = Api.authHeader { r.setValue(a, forHTTPHeaderField: "Authorization") }
+        return r
+    }
+
+    /// 下一个包并装上。整包校验和先过一遍，再走本地安装那条路（会再校一次 pack.sqlite）。
+    @discardableResult
+    func download(_ item: RemoteItem) async throws -> Pack {
+        if item.restricted && !canInstallRestricted { throw Err.restricted }
+        let (tmp, resp) = try await Api.session.download(for: authed(Api.url(item.url)))
+        try Api.check(resp)
+        let zip = FileManager.default.temporaryDirectory
+            .appendingPathComponent(item.id + ".zip")
+        try? FileManager.default.removeItem(at: zip)
+        try FileManager.default.moveItem(at: tmp, to: zip)
+        defer { try? FileManager.default.removeItem(at: zip) }
+
+        // 整包校验：下了一半、代理给了个错页面，这里就拦住
+        let sha = SHA256.hash(data: try Data(contentsOf: zip, options: .mappedIfSafe))
+            .map { String(format: "%02x", $0) }.joined()
+        guard sha == item.zip_sha256 else { throw Err.checksum }
+        return try install(zip: zip)
+    }
+
     // MARK: 列 / 删
 
     func packs() -> [Pack] {
