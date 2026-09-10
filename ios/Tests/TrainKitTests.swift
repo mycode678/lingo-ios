@@ -75,10 +75,11 @@ final class TrainKitTests: XCTestCase {
 
     func testInflectedWordsCountAsCommon() {
         XCTAssertTrue(Vocab.loaded, "common5000.txt 没打进 App 包")
-        // wiped/weaving/hoped 这类"去 e 加 ed/ing"曾经全被当成生词，
-        // 难度闸于是滤掉一大批正常句子（云端练法一道题都出不来）
+        // 注意别拿 wiped / weaving 来断言：wipe、weave **本来就不在常用 5000 词里**，
+        // 判成生词是对的。挑的必须是"词干确实在表里"的变形，
+        // 否则这条测试测的是词表内容，不是变形规则。
         for w in ["running", "parties", "asked", "doesn't", "books", "moving",
-                  "wiped", "weaving", "hoped", "making", "closed"] {
+                  "hoped", "making", "closed", "moved", "taking"] {
             XCTAssertTrue(Vocab.isCommon(w), "\(w) 是常用词的变形，不该被当成生词")
         }
     }
