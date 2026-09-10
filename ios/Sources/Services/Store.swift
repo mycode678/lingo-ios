@@ -296,6 +296,9 @@ final class DrillModel: ObservableObject {
             return
         }
         view = (0, Player.shared.duration)
+        // 诊断用：真机上核对"装进播放器的到底是不是这一句的音频"
+        print("PACKLOAD id=\(s.src) 文件=\(sent.audio.lastPathComponent) "
+              + "包里写的时长=\(sent.dur) 播放器实际=\(Player.shared.duration)")
         words = Self.padOnsets(cat.words(packId, s.src).map { Api.Word(w: $0.w, s: $0.s, e: $0.e) },
                                duration: Player.shared.duration)
         chunks = Self.cutChunks(words)
