@@ -25,8 +25,58 @@ struct CompareView: View {
         VStack(alignment: .leading, spacing: T.s3) {
             scores
             notes
+            aiBlock
             wordRow
             legend
+        }
+    }
+
+    // MARK: AI 拆解
+    //
+    // 本机那套（逐词标色 + 一句话诊断）永远都在，AI 只是锦上添花：
+    // 没 key、断网、超额度，一律降级成一行小字，不报错、不挡路。
+
+    @State private var ai: String?
+    @State private var aiBusy = false
+    @State private var aiErr: String?
+    var sentence: String = ""
+
+    @ViewBuilder private var aiBlock: some View {
+        if let ai {
+            VStack(alignment: .leading, spacing: T.s2) {
+                HStack(spacing: T.s2) {
+                    Image(systemName: "sparkles").foregroundStyle(Color.accentColor)
+                    Text("AI 拆解").font(.system(size: fSmall, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(ai).font(.system(size: fBody)).lineSpacing(fBody * 0.22)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(T.s3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+        } else if !sentence.isEmpty {
+            HStack(spacing: T.s2) {
+                Button {
+                    aiBusy = true; aiErr = nil
+                    Task {
+                        do { ai = try await CoachService.shared.explain(sentence: sentence, diff: diff) }
+                        catch { aiErr = error.localizedDescription }
+                        aiBusy = false
+                    }
+                } label: {
+                    Label(aiBusy ? "正在拆…" : "AI 拆解", systemImage: "sparkles").fixedSize()
+                        .font(.system(size: fSmall, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .disabled(aiBusy)
+                if let aiErr {
+                    Text(aiErr).font(.system(size: fSmall - 1)).foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
         }
     }
 

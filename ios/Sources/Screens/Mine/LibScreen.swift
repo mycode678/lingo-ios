@@ -145,6 +145,9 @@ struct SettingsScreen: View {
     @AppStorage("ui.accent") private var accent = "#2f6fd0"
     @AppStorage("ui.scheme") private var scheme = "system"
     @AppStorage("owner.key") private var ownerKey = ""
+    @AppStorage("ai.provider") private var aiProvider = "deepseek"
+    @AppStorage("ai.key") private var aiKey = ""
+    private var aiLeft: Int { CoachService.shared.remainingToday() }
 
     private let accents: [(String, String)] = [
         ("#2f6fd0", "蓝"), ("#105f6e", "墨绿"), ("#c0392b", "砖红"),
@@ -194,6 +197,21 @@ struct SettingsScreen: View {
                     fontRow("精听台句子", $sentFont, 16...32)
                 } header: { Text("字号") } footer: {
                     Text("拖动就能看到下面的示例跟着变，调到看着舒服为止。")
+                }
+
+                Section {
+                    Picker("服务商", selection: $aiProvider) {
+                        Text("DeepSeek").tag("deepseek")
+                        Text("OpenRouter").tag("openrouter")
+                    }
+                    .pickerStyle(.segmented)
+                    SecureField("API key", text: $aiKey)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("AI 拆解") } footer: {
+                    Text("填了才能用 AI 拆解跟读结果。key 只存在这台手机上。\n"
+                         + "发给 AI 的只有「哪个词、原声多长、你多长、该连没连」这些数字 —— "
+                         + "录音本身永远不出这台手机。\n"
+                         + "免费额度每天 \(CoachService.freeDaily) 句，今天还剩 \(aiLeft) 句。")
                 }
 
                 Section {
