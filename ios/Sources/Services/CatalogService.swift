@@ -99,6 +99,23 @@ final class CatalogService: ObservableObject {
                     installedAt: Date().timeIntervalSince1970)
     }
 
+    /// 手机上现做出来的包（用户自己导入的材料）记一笔账。
+    ///
+    /// 不走 `install(zip:)` 那条路：那条是给"外面下来的包"用的，要校验和、要防篡改；
+    /// 这个包是本机刚生成的，文件已经在位置上了，再打成 zip 校验一遍纯属浪费。
+    func registerLocal(id: String, name: String, sentences: Int) throws {
+        try db.run("""
+            INSERT INTO pack(id, name, version, sentences, restricted, installed_at)
+            VALUES(?,?,1,?,0,?)
+            ON CONFLICT(id) DO UPDATE SET name=excluded.name,
+                sentences=excluded.sentences, installed_at=excluded.installed_at
+            """, [id, name, sentences, Date().timeIntervalSince1970])
+    }
+
+    /// 用户自己导的包（id 以 user- 开头）—— 界面上要跟预置材料分开显示，
+    /// 它们不占"每天能解锁几句"的额度（那是自己的材料，凭什么卡）。
+    static func isUserPack(_ id: String) -> Bool { id.hasPrefix("user-") }
+
     // MARK: 目录（能下哪些包）
 
     struct RemoteItem: Codable, Identifiable {

@@ -16,6 +16,7 @@ struct PackStoreScreen: View {
     @State private var err: String?
     @State private var loading = true
     @State private var preview: CatalogService.RemoteItem?
+    @State private var showImport = false
 
     /// 身份。方案里他列的就是这几类人。
     private let whoList = ["入门", "日常口语", "出国", "雅思", "TED", "VOA"]
@@ -69,10 +70,19 @@ struct PackStoreScreen: View {
                     NavigationLink { DictScreen() } label: { Image(systemName: "character.book.closed") }
                         .accessibilityLabel("查词")
                 }
+                // 「导入自己的材料」是用户点名的一条大需求，不该藏在设置里
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showImport = true } label: { Image(systemName: "square.and.arrow.down") }
+                        .accessibilityLabel("导入")
+                        .accessibilityIdentifier("packs.import")
+                }
             }
             .refreshable { await load() }
             .task { await load() }
             .sheet(item: $preview) { previewSheet($0) }
+            .sheet(isPresented: $showImport) {
+                ImportScreen { showImport = false; Task { await load() } }
+            }
         }
     }
 
