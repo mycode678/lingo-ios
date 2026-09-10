@@ -162,6 +162,13 @@ struct TrainHomeScreen: View {
             planStep = nil; running = nil; return
         }
         planStep = step + 1
-        running = TrainService.dailyPlan[step + 1].mode
+        // 上一层浮层还在收，这时候直接换 item，SwiftUI 会把新的那次"吃掉"
+        // （表现是：第一步练完就回到首页，第二步压根不出来）。等它收完再开。
+        let next = TrainService.dailyPlan[step + 1].mode
+        running = nil
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            running = next
+        }
     }
 }

@@ -77,14 +77,24 @@ final class ImportService: ObservableObject {
             if let text = try? await transcribe(chunk), !text.isEmpty {
                 step = Step(text: "对齐第 \(Int(t / chunkSeconds) + 1) 段",
                             fraction: 0.05 + 0.6 * (end / total))
-                for s in split(text) {
-                    guard let ws = try? await Aligner.shared.align(pcm: chunk, text: s),
-                          !ws.isEmpty else { continue }
+                // **整块只对齐一次**，再按句子把词切开。
+                // 曾经是每句拿整块去对一次 —— 那一句会被摊到整整 45 秒上，
+                // 时间戳全错，切出来的音频跟文字对不上，整个导入就废了。
+                let parts = split(text)
+                if let all = try? await Aligner.shared.align(pcm: chunk, text: text), !all.isEmpty {
                     // 块内时间轴 → 整段时间轴
-                    let shifted = ws.map {
-                        Aligner.Word(text: $0.text, start: $0.start + t, end: $0.end + t, score: $0.score)
+                    var words = all.map {
+                        Aligner.Word(text: $0.text, start: $0.start + t,
+                                     end: $0.end + t, score: $0.score)
                     }
-                    sentences.append((s, shifted))
+                    for p in parts {
+                        let n = p.split(separator: " ").count
+                        guard words.count >= max(2, n / 2) else { break }
+                        // 对齐可能少认几个词，按句子的词数依次取，取不满就把剩下的都给它
+                        let take = min(n, words.count)
+                        sentences.append((p, Array(words.prefix(take))))
+                        words.removeFirst(take)
+                    }
                 }
             }
             t = end
@@ -121,13 +131,19 @@ final class ImportService: ObservableObject {
         var pcm: [Float] = []
         while let buf = out.copyNextSampleBuffer() {
             guard let bb = CMSampleBufferGetDataBuffer(buf) else { continue }
-            var len = 0
-            var ptr: UnsafeMutablePointer<Int8>?
-            CMBlockBufferGetDataPointer(bb, atOffset: 0, lengthAtOffsetOut: nil,
-                                        totalLengthOut: &len, dataPointerOut: &ptr)
-            if let ptr {
-                ptr.withMemoryRebound(to: Float.self, capacity: len / 4) { p in
-                    pcm.append(contentsOf: UnsafeBufferPointer(start: p, count: len / 4))
+            // 不能用 CMBlockBufferGetDataPointer 拿到的指针配 totalLength 去读：
+            // block buffer 允许由多段不连续内存拼成，那个指针只保证第一段有效，
+            // 按全长读就越界了。CopyDataBytes 由系统负责拼。
+            let len = CMBlockBufferGetDataLength(bb)
+            guard len >= 4 else { CMSampleBufferInvalidate(buf); continue }
+            var bytes = [UInt8](repeating: 0, count: len)
+            let ok = bytes.withUnsafeMutableBytes {
+                CMBlockBufferCopyDataBytes(bb, atOffset: 0, dataLength: len,
+                                           destination: $0.baseAddress!)
+            }
+            if ok == noErr {
+                bytes.withUnsafeBytes { raw in
+                    pcm.append(contentsOf: raw.bindMemory(to: Float.self).prefix(len / 4))
                 }
             }
             CMSampleBufferInvalidate(buf)

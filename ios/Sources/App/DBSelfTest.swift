@@ -45,13 +45,17 @@ struct DBSelfTest: View {
             out.append(("dbIdempotent", "迁移跑两遍",
                         v1 == v2 && v1 == DB.latestVersion ? "一样，OK" : "不一样！\(v1)→\(v2)"))
 
-            // ② 六张表都在
+            // ② 表一张都不能少。
+            // 加表的时候这份名单和 UI 测试里的数字要一起改 ——
+            // 上一轮就是忘了改，测试红在"库版本不是 3"上（其实是 5，加了 train/ladder/day）。
             let tabs = try db.rows(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
                 .compactMap { $0["name"] as? String }.sorted()
-            let want = ["fav", "mark", "meta", "pack", "progress", "quota", "rec", "sent", "unlock"]
+            let want = ["day", "fav", "ladder", "mark", "meta", "pack",
+                        "progress", "quota", "rec", "sent", "train", "unlock"]
             out.append(("dbTables", "表",
-                        tabs == want ? "九张都在" : "对不上：\(tabs.joined(separator: ","))"))
+                        tabs == want ? "\(want.count) 张都在"
+                                     : "对不上：\(tabs.joined(separator: ","))"))
 
             // ⑦ 收藏和难点也走本机
             let ps2 = PracticeService(db: db)

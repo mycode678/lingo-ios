@@ -298,9 +298,11 @@ final class DBUITests: XCTestCase {
         let a = XCUIApplication()
         a.launchArguments = ["-dbtest", "-dbwrite"]
         a.launch()
-        XCTAssertEqual(val(a, "dbVersion"), "3", "库版本不对")
+        // 加了表就要把这两个数改掉（v4 训练记账、v5 每天练了多少）。
+        // 这条测试**就该在改库时红一次** —— 它是"你动了库结构"的提醒。
+        XCTAssertEqual(val(a, "dbVersion"), "5", "库版本不对")
         XCTAssertEqual(val(a, "dbIdempotent"), "一样，OK", "迁移跑两遍结果不一样")
-        XCTAssertEqual(val(a, "dbTables"), "九张都在", "表结构不对")
+        XCTAssertEqual(val(a, "dbTables"), "12 张都在", "表结构不对")
         XCTAssertEqual(val(a, "dbSchedule"), "OK", "本地复习排期算错了")
         XCTAssertEqual(val(a, "dbFavMark"), "OK", "本地收藏/难点不对")
         XCTAssertEqual(val(a, "packInstall"), "OK", "材料包装不上或内容不全")

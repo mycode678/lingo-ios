@@ -65,15 +65,16 @@ final class TrainKitTests: XCTestCase {
         // 太长
         let long = Array(repeating: "the", count: 20).joined(separator: " ")
         XCTAssertEqual(TrainKit.tooHard(long), .tooLong(20))
-        // 生词太多（词表读不到时这条会放行，所以只在词表装上时断言）
-        if Vocab.loaded {
-            XCTAssertNotNil(TrainKit.tooHard(
-                "The perspicacious ichthyologist eschewed obfuscation entirely."))
-        }
+        // 生词太多。**这里必须硬断言词表装上了** ——
+        // 写成"词表没装就跳过"的话，哪天资源没打进包，这条测试会一直绿，
+        // 而难度闸其实已经形同虚设（全放行）。跳过的测试等于没测。
+        XCTAssertTrue(Vocab.loaded, "common5000.txt 没打进 App 包，难度闸等于没有")
+        XCTAssertNotNil(TrainKit.tooHard(
+            "The perspicacious ichthyologist eschewed obfuscation entirely."))
     }
 
     func testInflectedWordsCountAsCommon() {
-        guard Vocab.loaded else { return }
+        XCTAssertTrue(Vocab.loaded, "common5000.txt 没打进 App 包")
         for w in ["running", "parties", "asked", "doesn't", "books", "moving"] {
             XCTAssertTrue(Vocab.isCommon(w), "\(w) 是常用词的变形，不该被当成生词")
         }
