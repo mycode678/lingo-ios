@@ -93,7 +93,10 @@ struct DBSelfTest: View {
                     let userKept = ps3.isFav("packguard/1") && ps3.progress("packguard/1") != nil
 
                     out.append(("packInstall", "装包",
-                                pk.sentences == 3 && list.count == 1 && sents.count == 3
+                                // 别写死句数：测试包换过一次（原来 3 句，而且全超出常用词表，
+                                // 云端练法一道题都出不来）。只要"装进去多少就查得出多少"即可。
+                                pk.sentences >= 3 && list.count == 1
+                                && sents.count == pk.sentences
                                 && ws.count > 0 && audioOK
                                 ? "OK" : "不对 句\(sents.count) 词\(ws.count) 音频\(audioOK)"))
                     out.append(("packRemove", "删包不动用户数据",

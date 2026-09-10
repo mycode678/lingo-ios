@@ -196,6 +196,12 @@ enum Vocab {
         where x.hasSuffix(suf) {
             let stem = String(x.dropLast(suf.count))
             if stem.count >= 2, set.contains(stem) { return true }
+            // wiped → wipe，weaving → weave，making → make
+            // **这条最容易漏**：英语里去 e 再加 ed/ing 是最常见的变形之一，
+            // 少了它，wiped / weaving / hoped 全被当成生词，
+            // 难度闸会把一大批正常句子误判成"生词太多"而不出题
+            // （云端 CI 上三句测试句全军覆没，就是这么暴露出来的）。
+            if stem.count >= 2, set.contains(stem + "e") { return true }
             // running → run（去掉重复的尾字母）
             if let last = stem.last, stem.count >= 3,
                stem.dropLast().last == last, set.contains(String(stem.dropLast())) { return true }
