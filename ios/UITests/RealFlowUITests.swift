@@ -62,6 +62,21 @@ final class RealFlowUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["还没有材料"].exists, "进去了却是空屏")
     }
 
+    /// **断网也要能开始学**：拉不到远程目录时，装好的包必须照样列在那儿。
+    /// 云端 CI 连不上作者家里的服务器，正好是天然的断网场景 ——
+    /// 之前整页被"拿不到材料目录"顶掉，装好的包在界面上直接消失，
+    /// 而那页还写着"已经装好的包在下面，断网也能练"，是句假话。
+    func testStep1b_InstalledPacksSurviveNoNetwork() {
+        tab("材料")
+        sleep(3)
+        shot("1b-拉不到目录时")
+        XCTAssertTrue(app.staticTexts["已经装好的"].waitForExistence(timeout: 15),
+                      "拉不到目录时，装好的材料整段消失了：" + seen())
+        XCTAssertTrue(app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'packs.start.'")).firstMatch.exists,
+            "装好的包上没有「开始学」")
+    }
+
     // MARK: 二、精听台：能出声、能圈、能出跟读结果
 
     func testStep2_DrillActuallyWorksWithARealPack() {

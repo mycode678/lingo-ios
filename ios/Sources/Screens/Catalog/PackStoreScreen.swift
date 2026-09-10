@@ -63,19 +63,47 @@ struct PackStoreScreen: View {
                     Text("挑一个，下面只显示适合你的材料。不确定就选「全部」。")
                 }
 
+                // 装好的材料**永远摆在这儿**，跟联不联网、跟远程目录拉没拉到都无关。
+                // 原来只画远程目录里的条目，装好的包只有"恰好也在目录里"才看得见 ——
+                // 断网或服务器挂掉时，用户装好的材料在界面上直接消失，
+                // 而那页报错还写着"已经装好的包在下面，断网也能练"，是句假话。
+                if !installed.isEmpty {
+                    Section {
+                        ForEach(installed) { p in installedRow(p) }
+                    } header: {
+                        Text("已经装好的")
+                    } footer: {
+                        Text("这些在本机，断网照样练。")
+                    }
+                }
+
                 if loading {
                     HStack { Spacer(); ProgressView(); Spacer() }
-                } else if let err {
+                } else if let err, installed.isEmpty {
                     ContentUnavailableView {
                         Label("拿不到材料目录", systemImage: "wifi.exclamationmark")
                     } description: {
-                        Text(err + "\n已经装好的包在下面，断网也能练。")
+                        // 这个分支只在**一个包都没装**时走到，所以不能再写
+                        // "已经装好的包在下面"——那句话以前是假的（列表被整页顶掉了）
+                        Text(err + "\n先把账号密码填上，或者检查一下网络。")
                     } actions: {
                         // 最常见的原因就是没填账号密码（服务器一律要，局域网也要）。
                         // 让人从这儿一步到设置，别逼他自己去猜该点哪儿。
                         Button("去填账号密码") { showSettings = true }
                             .buttonStyle(.borderedProminent)
                         Button("重试") { Task { await load() } }
+                    }
+                } else if let err {
+                    // 已经有装好的包时，拉目录失败只是"暂时下不了新的"，
+                    // 不该弄成一整页报错 —— 练习照常进行。
+                    HStack(alignment: .top, spacing: T.s2) {
+                        Image(systemName: "wifi.exclamationmark").foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("暂时拉不到新材料").font(.system(size: T.f2))
+                            Text(err).font(.system(size: T.f1)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Button("重试") { Task { await load() } }.font(.system(size: T.f1))
                     }
                 } else if shown.isEmpty {
                     Text("这一类暂时还没有材料。").foregroundStyle(.secondary)
@@ -133,6 +161,33 @@ struct PackStoreScreen: View {
 
     // MARK: 一行一个包
 
+    /// 已装好的一行：点「开始学」直接进精听台；左滑删除。
+    @ViewBuilder private func installedRow(_ p: CatalogService.Pack) -> some View {
+        HStack(spacing: T.s3) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(p.name).font(.system(size: 16, weight: .medium))
+                Text("\(p.sentences) 句　·　在本机")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Button {
+                store.loadPack(p.id, name: p.name)
+                nav.tab = 2
+            } label: {
+                Label("开始学", systemImage: "play.fill")
+                    .font(.system(size: T.f2, weight: .medium))
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("packs.start." + p.id)
+        }
+        .swipeActions(edge: .trailing) {
+            Button("删除", role: .destructive) {
+                cat.remove(p.id)
+                installed = cat.packs()
+            }
+        }
+    }
+
     @ViewBuilder private func packRow(_ it: CatalogService.RemoteItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -144,17 +199,11 @@ struct PackStoreScreen: View {
                 }
                 Spacer()
                 if isOn(it.id) {
-                    // 装完了得有地方去。原来这儿只有一个"已装"的对勾 ——
-                    // 用户下完包在界面上找不到任何入口（他原话："怎么学习它呢？好像没有接口啊"）。
-                    Button {
-                        store.loadPack(it.id, name: it.name)
-                        nav.tab = 2                    // 直接进精听台
-                    } label: {
-                        Label("开始学", systemImage: "play.fill")
-                            .font(.system(size: T.f2, weight: .medium))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("packs.start." + it.id)
+                    // 已装的「开始学」在上面那段「已经装好的」里，这儿只标个对勾，
+                    // 免得同一个包出现两个一模一样的按钮
+                    Label("已装", systemImage: "checkmark.circle.fill")
+                        .font(.caption).foregroundStyle(T.Score.good).labelStyle(.iconOnly)
+                        .accessibilityLabel("已装")
                 } else if busy == it.id {
                     ProgressView()
                 } else {
