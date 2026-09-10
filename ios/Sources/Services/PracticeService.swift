@@ -66,7 +66,47 @@ final class PracticeService {
             """, [sentId, p.reps, p.ease, p.due, p.lastScore, now])
 
         if let meta { remember(sentId, meta) }
+        bumpToday()
         return p.due
+    }
+
+    // MARK: 每天练了多少（连续天数、热力图都靠它）
+    //
+    // 以前这两个数字是找服务器要的，断网就变成"你一天都没练过"——
+    // 用户攒了两个月的连打卡被显示成 0，比不显示更伤人。现在本机记。
+
+    private func dayIndex(_ t: Double = Date().timeIntervalSince1970) -> Int {
+        var c = Calendar.current; c.timeZone = .current
+        return Int(c.startOfDay(for: Date(timeIntervalSince1970: t)).timeIntervalSince1970 / 86400)
+    }
+
+    private func bumpToday() {
+        try? db.run("""
+            INSERT INTO day(d, n) VALUES(?, 1)
+            ON CONFLICT(d) DO UPDATE SET n = n + 1
+            """, [dayIndex()])
+    }
+
+    /// 连着练了多少天（今天没练也算，只要昨天以前是连着的就不断链）
+    func streak() -> Int {
+        let rows = (try? db.rows("SELECT d FROM day WHERE n > 0 ORDER BY d DESC LIMIT 400")) ?? []
+        let days = Set(rows.compactMap { $0["d"] as? Int })
+        guard !days.isEmpty else { return 0 }
+        let today = dayIndex()
+        // 今天还没练时从昨天往回数，不然一早打开 App 就显示"连打断了"
+        var cur = days.contains(today) ? today : today - 1
+        var n = 0
+        while days.contains(cur) { n += 1; cur -= 1 }
+        return n
+    }
+
+    /// 最近 N 天各练了多少（热力图用）
+    func heat(_ days: Int = 120) -> [Int: Int] {
+        let from = dayIndex() - days
+        let rows = (try? db.rows("SELECT d, n FROM day WHERE d >= ?", [from])) ?? []
+        var out: [Int: Int] = [:]
+        for r in rows { if let d = r["d"] as? Int { out[d] = r["n"] as? Int ?? 0 } }
+        return out
     }
 
     func progress(_ sentId: String) -> Prog? {
@@ -118,6 +158,11 @@ final class PracticeService {
     func dueCount() -> Int {
         let now = Date().timeIntervalSince1970
         return (try? db.row("SELECT COUNT(*) AS n FROM progress WHERE due <= ?", [now])?["n"] as? Int) as? Int ?? 0
+    }
+
+    /// 一共碰过多少句（「没练过的还剩几句」要拿它减）
+    func practicedCount() -> Int {
+        (try? db.row("SELECT COUNT(*) AS n FROM progress")?["n"] as? Int) as? Int ?? 0
     }
 
     /// 今天练了多少句

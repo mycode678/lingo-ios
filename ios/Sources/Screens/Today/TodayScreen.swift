@@ -11,9 +11,12 @@ struct TodayScreen: View {
     @EnvironmentObject var store: Store
     @EnvironmentObject var nav: Nav
     @State private var showReview = false
-    @State private var counts: Api.Counts?
+    @State private var dueN = 0
+    @State private var freshN = 0
     @State private var streak = 0
     @State private var todayDone = 0
+    @State private var trained = 0
+    @State private var justRewarded = 0
     @AppStorage("today.goal") private var goal = 50
 
     var body: some View {
@@ -68,15 +71,19 @@ struct TodayScreen: View {
 
     @ViewBuilder private var tasks: some View {
         VStack(spacing: T.s2) {
-            if let c = counts, c.cards == 0 {
+            if dueN == 0 && freshN == 0 && trained == 0 {
                 emptyGuide
             } else {
-                if let c = counts, c.due > 0 {
-                    task("该复习了", "\(c.due) 句", "arrow.triangle.2.circlepath",
+                // 「训练」排在最前面：这是这个 App 跟别家不一样的地方，
+                // 也是每天最该先做的事（先听得见，再抠细节）。
+                task("分级听力训练", "七个练法", "figure.run",
+                     "从你够得着的句子里出题，不拿听不懂的材料硬灌") { nav.tab = 3 }
+                if dueN > 0 {
+                    task("该复习了", "\(dueN) 句", "arrow.triangle.2.circlepath",
                          "记忆曲线到点了，趁还记得赶紧过一遍") { showReview = true }
                 }
-                if let c = counts, c.fresh > 0 {
-                    task("没练过的", "\(c.fresh) 句", "waveform",
+                if freshN > 0 {
+                    task("没练过的", "\(freshN) 句", "waveform",
                          "圈出听不懂的半秒，反复听到听清") { nav.tab = 2 }
                 }
                 task("跟读打分", "随时", "mic",
@@ -137,7 +144,15 @@ struct TodayScreen: View {
     // 练满了什么也不会发生。对用户许了愿不兑现，比不说更糟。
     // 先改成只说进度，等 D4 做完再把"奖励"两个字加回来。
     @ViewBuilder private var rewardHint: some View {
-        if todayDone < goal {
+        if justRewarded > 0 {
+            HStack(spacing: T.s2) {
+                Image(systemName: "gift.fill").foregroundStyle(T.Score.good)
+                Text("今天练满了，多送你 \(justRewarded) 句解锁额度")
+                    .font(.system(size: T.f2)).foregroundStyle(T.Score.good)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, T.s2)
+        } else if todayDone < goal {
             HStack(spacing: T.s2) {
                 Image(systemName: "target").foregroundStyle(.orange)
                 Text("离今天的目标还差 \(goal - todayDone) 句")
@@ -148,18 +163,19 @@ struct TodayScreen: View {
         }
     }
 
+    /// 全部本机算 —— 断网、飞行模式下这一屏的数字照样是对的。
+    /// （以前这里是 `Api.counts()` + `Api.heat()`，服务器一挂就显示"你一天都没练过"。）
     private func load() async {
-        counts = try? await Api.counts()
-        todayDone = counts?.today ?? 0
-        // 连续天数：从练习热力图里数最近连着有记录的天数
-        if let days = try? await Api.heat() {
-            let today = Int(Date().timeIntervalSince1970 / 86400)
-            var n = 0
-            while (days[today - n] ?? 0) > 0 || (n == 0 && todayDone > 0) {
-                n += 1
-                if n > 400 { break }
-            }
-            streak = n
-        }
+        let p = PracticeService.shared
+        dueN = p.dueCount()
+        todayDone = p.todayCount()
+        streak = p.streak()
+        trained = TrainService.shared.today().done
+        // 「没练过的」= 装了的材料包里还没碰过的句子
+        let packs = CatalogService.shared.packs()
+        freshN = max(0, packs.reduce(0) { $0 + $1.sentences } - p.practicedCount())
+        // 练够了就把今天的奖励发掉。**许了愿就得兑现** ——
+        // 这行字在 D4 之前挂过一次而没有发奖那套，等于对用户放空话。
+        justRewarded = RewardService.shared.settleToday(done: todayDone, streak: streak)
     }
 }
