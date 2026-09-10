@@ -159,9 +159,6 @@ struct TrainSessionScreen: View {
         _m = StateObject(wrappedValue: TrainSessionModel(mode: mode))
     }
 
-    /// 题面居中时用的最小高度：留出控制条和安全区之后剩多少
-    @State private var centerRoom: CGFloat = 320
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -170,11 +167,18 @@ struct TrainSessionScreen: View {
                 } else if m.finished {
                     done
                 } else {
-                    // 题面垂直居中。原来钉在顶上，一道两行的填空题下面空掉四分之三屏，
-                    // 真机截图上整块黑。题长的时候照样能滚。
-                    ScrollView {
-                        question.padding(T.side)
-                            .frame(maxWidth: .infinity, minHeight: centerRoom, alignment: .center)
+                    // 题面垂直居中。原来钉在顶上，一道两行的填空题下面空掉四分之三屏。
+                    //
+                    // 第一版拿 GeometryReader 放在 .background 里测高度、再喂给 minHeight ——
+                    // 值来得比首次渲染晚，用的还是初值，云端截图上题面照旧缩在顶上。
+                    // 直接用 GeometryReader 包住内容区，minHeight 就是它自己的高度，
+                    // 一次成型，不依赖任何"稍后才知道"的状态。
+                    GeometryReader { g in
+                        ScrollView {
+                            question.padding(T.side)
+                                .frame(maxWidth: .infinity, minHeight: g.size.height,
+                                       alignment: .center)
+                        }
                     }
                     controls                     // 高频动作钉在最下面（拇指区）
                 }
@@ -191,11 +195,6 @@ struct TrainSessionScreen: View {
                         Text(m.progress).font(.system(size: T.f2)).monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
-                }
-            }
-            .background {
-                GeometryReader { g in
-                    Color.clear.onAppear { centerRoom = max(200, g.size.height - T.hBig - 40) }
                 }
             }
             .onAppear { m.load() }

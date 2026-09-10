@@ -90,12 +90,14 @@ jobs:
           shoot "iPhone SE (3rd generation)" "drill" light
           shoot "iPhone SE (3rd generation)" "drill" light "-select"
           # 练法界面：云端点不进二级页，靠 -mode 直接打开。
+          # **必须带 -usepack**，否则装的不是测试材料包，
+          # 截出来的还是演示那三句（右上角 1/1），等于白截。
           # 不截它的话，练法那几屏的布局在 CI 里等于没人看
           # （这次真机锁屏就抓瞎了 —— 环境不可用时云端必须能顶上）
           for M in blank group stress ladder dictation; do
-            shoot "iPhone 15 Pro Max" "train" light "-mode $M"
+            shoot "iPhone 15 Pro Max" "train" light "-usepack -mode $M"
           done
-          shoot "iPhone SE (3rd generation)" "train" light "-mode blank"
+          shoot "iPhone SE (3rd generation)" "train" light "-usepack -mode blank"
           # 抽屉里的三块也截下来：句子列表（筛选行要钉在顶上）、间隔面板、改倍速面板
           shoot "iPhone 15 Pro Max" "drill" light "-sheet list"
           shoot "iPhone 15 Pro Max" "drill" light "-sheet gap"
