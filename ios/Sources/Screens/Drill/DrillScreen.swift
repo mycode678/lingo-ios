@@ -71,6 +71,10 @@ struct DrillScreen: View {
     @State private var landHideText = false
     /// 这一句打过哪一档（换句就清空）。点完要看得见，不然不知道打没打过。
     @State private var graded: Int?
+    /// 这一句听过没有。**打分四键要等听完才出现** ——
+    /// 一句都还没放就摆四个"没听懂/勉强/会了/脱口而出"在拇指区，
+    /// 既没意义又占掉一整行，还把跟读结果往上挤。切句时清零。
+    @State private var heardThisOne = false
     private let practice = PracticeService.shared
     /// 这次会话里本机改过收藏的句子（本机取消了收藏，服务器那份还写着 1，别让它盖回来）
     @State private var favTouched: Set<String> = []
@@ -198,6 +202,12 @@ struct DrillScreen: View {
                 if autoPlay || byWalk { player.play(from: seg?.lowerBound ?? 0) }
             }
         }
+        // 一开始放，就把打分四键放出来（见 heardThisOne）
+        .onChange(of: player.isPlaying) { _, playing in
+            if playing && !heardThisOne {
+                withAnimation(T.anim) { heardThisOne = true }
+            }
+        }
         .onChange(of: volKeys) { _, _ in wireVolumeKeys() }
         .onChange(of: boostHF) { _, v in player.boostHF = v }
         .onChange(of: rec.hasTake) { _, has in       // 录完自动把结果弹出来
@@ -235,15 +245,10 @@ struct DrillScreen: View {
     private var controlStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                Button { showList = true } label: {
-                    Image(systemName: "list.bullet").font(.system(size: 15))
-                        .foregroundStyle(Color.primary.opacity(0.75))
-                        .frame(width: 44, height: T.hCtl)
-                        .background(Color.primary.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
+                // **最左边必须是播放**。他定的高频顺序是
+                // 「播/停、录/停、整句、铺满、几个倍速、显示、听感、收藏、难点」，
+                // 而这儿原来第一个是「句子列表」——左手拇指最容易够到的位置
+                // 给了一个低频功能，播放被挤到第二格。真机截图上一眼就看出来了。
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 18))
@@ -252,6 +257,8 @@ struct DrillScreen: View {
                         .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(player.isPlaying ? "暂停" : "播放")
+                .accessibilityIdentifier("playPause")
 
                 // 录音是"听"之外的另一半，跟播放键一样该显眼：录着的时候整块变红
                 Button {
@@ -353,6 +360,17 @@ struct DrillScreen: View {
                     .accessibilityAddTraits(.isButton)
 
                 gapChip
+
+                // 句子列表：低频，挪到右边来了（原来占着最左那格）
+                Button { showList = true } label: {
+                    Image(systemName: "list.bullet").font(.system(size: 15))
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .frame(width: 44, height: T.hCtl)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("句子列表")
 
                 // 音量键：走路时屏幕黑着全靠它，开没开要一眼看得见
                 Button {
@@ -494,7 +512,7 @@ struct DrillScreen: View {
             // 走路时转个屏，原来点"播放"的位置变成"没听懂"，
             // 一下就提交了一次评分还可能跳下一句，代价不小。
             chunkStrip.auditBlock("小句")
-            gradeRow(34).auditBlock("打分")
+            if gradeShown { gradeRow(34).auditBlock("打分").transition(.opacity) }
             controlStrip.auditBlock("控制条")
         }
         // 宽度交给父视图（.infinity＝给我多少用多少）。
@@ -513,7 +531,11 @@ struct DrillScreen: View {
         // 这样两种情况都不难看：不显示文字时波形长满，显示文字时也不会空出一大片。
         let cardHeight: CGFloat = cardH(geo.size.height)
         let swipeRoom: CGFloat = 96
-        let waveMax: CGFloat = max(180, geo.size.height - 36 - cardHeight - swipeRoom)
+        // 波形**封顶 300 点**。真机截图上它长到 360，占掉整屏的六成 ——
+        // 可"圈出听不懂的那半秒"这件事，240~300 点绰绰有余，再高纯属白占，
+        // 代价是原文和跟读结果全被挤到屏幕外。省下来的高度给结果面板。
+        let room: CGFloat = max(180, geo.size.height - 36 - cardHeight - swipeRoom)
+        let waveMax: CGFloat = min(300, room)
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
@@ -530,6 +552,16 @@ struct DrillScreen: View {
                 // 波形以下这一整片都能左右滑着切句；波形自己不接（那儿要拖选区、捏缩放）
                 VStack(spacing: 8) {
                     selectionBar.auditBlock("选区条")
+                    // 默认一个字都不显示（精听的规矩：先听声音，字是答案）。
+                    // 但新用户第一次进来就是一片波形，不知道该干嘛 ——
+                    // 空着的那块地给一句话，比留一片灰底强。
+                    if !anyText {
+                        Text("听不懂就在波形上圈出那半秒，反复听。\n要看原文，点下面控制条里的「显示」。")
+                            .font(.system(size: T.f2)).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).lineSpacing(3)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, T.s4).padding(.horizontal, T.s6)
+                    }
                     if anyText {
                         // 卡片只要文字实际那么高（封顶屏高 35%），**别吃光剩余空间** ——
                         // 吃光的结果是字占 114 点、卡片 350 点，空出 236 点纯白，
@@ -551,15 +583,20 @@ struct DrillScreen: View {
             .overlay(alignment: .bottom) {
                 if rec.hasTake && showTake {
                     takePanel
-                        .frame(maxHeight: geo.size.height * 0.56)   // 字号可调大，留够高度
+                        // 波形压到 300 之后这儿宽裕了，给它更多高度。
+                        // 从"波形至少留 90 点看得见"倒推，跟横屏用同一个规矩。
+                        .frame(maxHeight: max(260, waveMax + 8 + 36 + cardHeight - 90))
                         .background(.ultraThinMaterial)
                         .transition(.move(edge: .bottom))
                 }
             }
             // 小句固定在最底下这组的正上方 —— 位置永远不随文字多少变，闭着眼也能点
             chunkStrip.auditBlock("小句")
-            gradeRow.auditBlock("打分")
-                .padding(.top, 6)          // 原来跟小句贴在一起，两行糊成一块
+            if gradeShown {
+                gradeRow.auditBlock("打分")
+                    .padding(.top, 6)      // 原来跟小句贴在一起，两行糊成一块
+                    .transition(.opacity)
+            }
             transport.auditBlock("控制条")
         }
         .frame(maxWidth: .infinity)
@@ -658,10 +695,20 @@ struct DrillScreen: View {
     /// 横屏高度金贵，这排压到 28，省下的全给波形
     private func selectionBar(_ h: CGFloat) -> some View {
         HStack(spacing: T.gap) {
-            edgeGroup("A", h, minus: { vm.nudge("a", -0.08) },
-                      set: { vm.setEdgeAtHead("a") }, plus: { vm.nudge("a", 0.08) })
-            edgeGroup("B", h, minus: { vm.nudge("b", -0.08) },
-                      set: { vm.setEdgeAtHead("b") }, plus: { vm.nudge("b", 0.08) })
+            // 这儿原来是 `− A +　− B +` 四个加减按钮，占掉半行 —— 那是程序员思维。
+            // 正常人调选区就是**在波形上拖那两条边**，边缘本来就有拖拽热区。
+            // 撤掉之后这一行只剩"现在圈的是哪一段"和收藏/难点，清爽多了。
+            if let r = vm.selection {
+                Label(String(format: "%.2f – %.2fs", r.lowerBound, r.upperBound),
+                      systemImage: "selection.pin.in.out")
+                    .font(.system(size: T.f2)).monospacedDigit()
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1).fixedSize()
+            } else {
+                Text("在波形上拖一段，就只反复听那一小段")
+                    .font(.system(size: T.f1)).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.85)
+            }
             Spacer(minLength: 0)
             // 收藏和难点跟"这一句/这段选区"绑在一起，放选区这排比放播放排顺；
             // 底下那排腾出来给整句、铺满这些一直要点的。
@@ -669,30 +716,18 @@ struct DrillScreen: View {
                 Image(systemName: isFav ? "star.fill" : "star")
             }
             .buttonStyle(IconButton(on: isFav))
+            .accessibilityLabel("收藏")
             Button { Task { await vm.toggleMark() } } label: { Image(systemName: "flag") }
                 .buttonStyle(IconButton(on: !vm.marks.isEmpty))
+                .accessibilityLabel("难点")
             if !vm.marks.isEmpty {                      // 没标难点就不占位置
                 Button { vm.nextMark() } label: { Image(systemName: "arrow.right.to.line") }
                     .buttonStyle(IconButton())
+                    .accessibilityLabel("下一个难点")
             }
         }
         .padding(.horizontal, T.side)
         .frame(height: h)
-    }
-    private func edgeGroup(_ name: String, _ h: CGFloat = 36, minus: @escaping () -> Void,
-                           set: @escaping () -> Void, plus: @escaping () -> Void) -> some View {
-        let bh = h - 4
-        return HStack(spacing: 0) {
-            Button(action: minus) { Image(systemName: "minus").frame(width: 30, height: bh) }
-            Button(action: set) {
-                Text(name).font(.system(size: 13, weight: .medium)).frame(width: 26, height: bh)
-            }
-            Button(action: plus) { Image(systemName: "plus").frame(width: 30, height: bh) }
-        }
-        .font(.system(size: 12))
-        .foregroundStyle(Color.primary.opacity(0.75))
-        .background(Color.primary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: T.ctl, style: .continuous))
     }
 
     // MARK: - 倍速档位
@@ -807,6 +842,15 @@ struct DrillScreen: View {
                 }
                 .onChange(of: rec.hasTake) { _, has in
                     if has { p.scrollTo("takeTop", anchor: .top) }
+                }
+                // 下缘渐隐：这块内容常常滚不到底，没提示的时候最后一行被硬切平，
+                // 看着像渲染坏了（真机截图上诊断第三条就只露了半行）。
+                // 控制条那条横滑早就有渐隐了，同一屏不能两套规矩。
+                .overlay(alignment: .bottom) {
+                    LinearGradient(colors: [Color(.secondarySystemGroupedBackground).opacity(0),
+                                            Color(.secondarySystemGroupedBackground)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: 18).allowsHitTesting(false)
                 }
             }
         }
@@ -1070,6 +1114,8 @@ struct DrillScreen: View {
         return v >= 75 ? .green : (v >= 55 ? .orange : .red)
     }
 
+    /// 听过或录过才给打分 —— 见 `heardThisOne`
+    private var gradeShown: Bool { heardThisOne || rec.hasTake || graded != nil }
     private var gradeRow: some View { gradeRow(34) }
     /// 横屏高度紧张，打分行矮一档（40）；竖屏还是 48
     private func gradeRow(_ h: CGFloat) -> some View {
@@ -1366,6 +1412,7 @@ struct DrillScreen: View {
         store.index = i
         rec.reset()
         graded = nil
+        heardThisOne = false
         // 切句不给任何反馈（不震动、不弹字）：手势大家早就用熟了，反馈反而打扰
     }
     /// 一段播完 → 等"换下一句之前"这个间隔 → 再跳。

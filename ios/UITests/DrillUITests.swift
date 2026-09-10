@@ -120,8 +120,12 @@ final class DrillUITests: XCTestCase {
         let chunk = app.buttons.matching(
             NSPredicate(format: "label CONTAINS 'Excuse me can you tell'")).firstMatch
         XCTAssertTrue(chunk.waitForExistence(timeout: 10), "找不到小句；" + dump(app))
+        // 打分四键现在要**听过这一句才出现**（一句没放就摆四个评分键没意义，
+        // 还占掉一整行拇指区）。所以先放一下。
+        XCTAssertFalse(app.buttons["没听懂"].exists, "一句都没放就冒出打分行了")
+        app.buttons["playPause"].tap()
         let grade = app.buttons["没听懂"]
-        XCTAssertTrue(grade.exists, "找不到打分行")
+        XCTAssertTrue(grade.waitForExistence(timeout: 5), "放过之后打分行还是没出来；" + dump(app))
         XCTAssertLessThanOrEqual(chunk.frame.maxY, grade.frame.minY + 1,
                                  "小句压住了「没听懂」那一行")
     }

@@ -22,13 +22,17 @@ struct CompareView: View {
     private var fNum: CGFloat { CGFloat(base) + 7 }
 
     var body: some View {
+        // 顺序是有讲究的：**逐词标色必须在第一屏**。
+        // 原来它排在一大段诊断文字后面，真机截图上一个词都看不见 ——
+        // 而"点红词只播那个词"才是最直接的"听出差别"，把最值钱的东西推到屏幕外了。
+        // 现在：这次比的是哪段 → 三个分项 → 逐词标色 → 图例 → 诊断 → AI。
         VStack(alignment: .leading, spacing: T.s3) {
             scope
             scores
-            notes
-            aiBlock
             wordRow
             legend
+            notes
+            aiBlock
         }
     }
 
