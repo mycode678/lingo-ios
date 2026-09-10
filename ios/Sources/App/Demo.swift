@@ -63,6 +63,9 @@ enum Demo {
     /// 但这些动作最终都汇到同一处代码。后门就是从内部触发那处代码，
     /// 于是"按了之后会怎样"能自动验，不用人拿着手机配合。
     static var probe: Bool { on && ProcessInfo.processInfo.arguments.contains("-probe") }
+    /// -noplay：关掉"切到一句就自动播"。只给测试用 ——
+    /// 有它才验得了"还没听就不该冒出打分行"。
+    static var noAutoPlay: Bool { on && ProcessInfo.processInfo.arguments.contains("-noplay") }
     /// -bigfont：把结果字号拉到最大，专门验"字调大之后会不会挤坏"
     static var bigFont: Bool { on && ProcessInfo.processInfo.arguments.contains("-bigfont") }
     /// -audit：布局体检模式 —— 把文字全打开、字号拉大，专门制造"内容最多"的情况

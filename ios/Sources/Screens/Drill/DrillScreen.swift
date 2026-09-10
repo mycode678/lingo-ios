@@ -71,9 +71,14 @@ struct DrillScreen: View {
     @State private var landHideText = false
     /// 这一句打过哪一档（换句就清空）。点完要看得见，不然不知道打没打过。
     @State private var graded: Int?
-    /// 这一句听过没有。**打分四键要等听完才出现** ——
-    /// 一句都还没放就摆四个"没听懂/勉强/会了/脱口而出"在拇指区，
-    /// 既没意义又占掉一整行，还把跟读结果往上挤。切句时清零。
+    /// 这一句**听完一遍**了没有。打分四键要等听完才出现 ——
+    /// 一句都还没放完就摆四个"没听懂/勉强/会了/脱口而出"在拇指区，
+    /// 既没意义又占掉一整行，还把跟读结果往上挤。
+    ///
+    /// 为什么是"听完"不是"开始播"：自动播默认开着，一进这一句就出声，
+    /// 按"开始播"算的话它照样立刻出现，等于没改。按"听完"算，
+    /// 进来那几秒屏幕是干净的，波形和原文能占满，听完再让人评分 ——
+    /// 这也正好是评分该发生的时机。切句时清零。
     @State private var heardThisOne = false
     private let practice = PracticeService.shared
     /// 这次会话里本机改过收藏的句子（本机取消了收藏，服务器那份还写着 1，别让它盖回来）
@@ -199,12 +204,16 @@ struct DrillScreen: View {
                 let byWalk = autoNextJump
                 autoNextJump = false
                 autoPlayedSrc = s.src
-                if autoPlay || byWalk { player.play(from: seg?.lowerBound ?? 0) }
+                // -noplay 是测试钩子（只在 -demo 下有效）：关掉自动播，
+                // 才验得了"没播之前打分行不该在"。
+                if (autoPlay && !Demo.noAutoPlay) || byWalk {
+                    player.play(from: seg?.lowerBound ?? 0)
+                }
             }
         }
-        // 一开始放，就把打分四键放出来（见 heardThisOne）
-        .onChange(of: player.isPlaying) { _, playing in
-            if playing && !heardThisOne {
+        // 听完一遍（在放 → 不在放）才把打分四键放出来。见 heardThisOne。
+        .onChange(of: player.isPlaying) { was, now in
+            if was && !now && !heardThisOne {
                 withAnimation(T.anim) { heardThisOne = true }
             }
         }
@@ -531,11 +540,16 @@ struct DrillScreen: View {
         // 这样两种情况都不难看：不显示文字时波形长满，显示文字时也不会空出一大片。
         let cardHeight: CGFloat = cardH(geo.size.height)
         let swipeRoom: CGFloat = 96
-        // 波形**封顶 300 点**。真机截图上它长到 360，占掉整屏的六成 ——
-        // 可"圈出听不懂的那半秒"这件事，240~300 点绰绰有余，再高纯属白占，
-        // 代价是原文和跟读结果全被挤到屏幕外。省下来的高度给结果面板。
+        // 波形封顶。真机截图上它长到 360，占掉整屏六成 ——
+        // 可"圈出听不懂的那半秒"这件事，300 点绰绰有余，再高就是白占，
+        // 代价是原文和跟读结果全被挤到屏幕外。
+        //
+        // 但**封顶得看下面有没有人接这块地**：
+        //   勾了原文/译文 → 封顶 300，省下的给原文卡和跟读结果；
+        //   一个字都不显示（默认）→ 下面只有一行引导，硬封 300 就空出小半屏灰底
+        //     （第一版改完真机截图上就是这样，比原来还难看），所以放宽到 420。
         let room: CGFloat = max(180, geo.size.height - 36 - cardHeight - swipeRoom)
-        let waveMax: CGFloat = min(300, room)
+        let waveMax: CGFloat = min(anyText ? 300 : 420, room)
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
@@ -560,7 +574,7 @@ struct DrillScreen: View {
                             .font(.system(size: T.f2)).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center).lineSpacing(3)
                             .frame(maxWidth: .infinity)
-                            .padding(.top, T.s4).padding(.horizontal, T.s6)
+                            .padding(.top, T.s3).padding(.horizontal, T.s6)
                     }
                     if anyText {
                         // 卡片只要文字实际那么高（封顶屏高 35%），**别吃光剩余空间** ——
@@ -1066,7 +1080,8 @@ struct DrillScreen: View {
             }
             // 逐词比对（手机上现算的）—— 有它就以它为主，它比听写文本有用得多
             if let d = rec.diff {
-                CompareView(diff: d, sentence: rec.refText.isEmpty ? (store.current?.en ?? "") : rec.refText)
+                CompareView(diff: d, scoped: vm.selection != nil,
+                            sentence: rec.refText.isEmpty ? (store.current?.en ?? "") : rec.refText)
             }
             // 机器听写只是佐证："它听成了什么"。有逐词比对时降级成一行小字。
             if let h = rec.heard, !h.isEmpty {

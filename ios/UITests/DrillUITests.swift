@@ -54,6 +54,18 @@ final class DrillUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    /// 还没听完就不该冒出打分四键 —— 它占掉一整行拇指区。
+    /// 用 -noplay 关掉自动播，否则一进来就播完了，这条断言永远不会失败（＝白测）。
+    func testGradeRowWaitsUntilHeard() {
+        let app = launch(["-noplay"])
+        XCTAssertTrue(app.buttons["playPause"].waitForExistence(timeout: 10),
+                      "播放键都没有；" + dump(app))
+        XCTAssertFalse(app.buttons["没听懂"].exists, "一句都还没放，打分行就冒出来了")
+        app.buttons["playPause"].tap()
+        XCTAssertTrue(app.buttons["没听懂"].waitForExistence(timeout: 15),
+                      "听完一遍之后打分行还是没出来；" + dump(app))
+    }
+
     /// 竖屏：底部控制条从左到右该有的键都在，且能滑到最右边
     func testPortraitStripScrolls() {
         let app = launch()
@@ -120,12 +132,11 @@ final class DrillUITests: XCTestCase {
         let chunk = app.buttons.matching(
             NSPredicate(format: "label CONTAINS 'Excuse me can you tell'")).firstMatch
         XCTAssertTrue(chunk.waitForExistence(timeout: 10), "找不到小句；" + dump(app))
-        // 打分四键现在要**听过这一句才出现**（一句没放就摆四个评分键没意义，
-        // 还占掉一整行拇指区）。所以先放一下。
-        XCTAssertFalse(app.buttons["没听懂"].exists, "一句都没放就冒出打分行了")
-        app.buttons["playPause"].tap()
+        // 打分四键现在要**听完一遍才出现**。这一屏默认自动播，
+        // 等小句出来的这十秒里早就播完了，所以这里直接等它出现。
+        // "没听完不该有"那条单独一个测试验（testGradeRowWaitsUntilHeard）。
         let grade = app.buttons["没听懂"]
-        XCTAssertTrue(grade.waitForExistence(timeout: 5), "放过之后打分行还是没出来；" + dump(app))
+        XCTAssertTrue(grade.waitForExistence(timeout: 10), "听完了打分行还是没出来；" + dump(app))
         XCTAssertLessThanOrEqual(chunk.frame.maxY, grade.frame.minY + 1,
                                  "小句压住了「没听懂」那一行")
     }

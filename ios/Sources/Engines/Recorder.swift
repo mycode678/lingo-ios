@@ -36,7 +36,10 @@ final class Recorder: NSObject, ObservableObject {
         heardAttributed = AttributedString(heard!)
         wrongWords = ["museum"]
         score = Score(words: 88, tone: 76, rhythm: 81)
-        message = "听写来自本机识别，只作参考"
+        // 这儿原来塞了一条"听写来自本机识别，只作参考"的黄色警告条。
+        // 真机上根本走不到这个分支，可它天天占掉截图第一屏，
+        // 把最值钱的逐词标色挤出可视区。警告条留给真正出错的时候用。
+        message = nil
         // 1.5 秒的假波形，好看"我的录音"那条轨。
         // 写成一行 map 会让 Swift 类型检查器超时（编译报 unable to type-check），拆开写。
         var pcm = [Float](); pcm.reserveCapacity(24000)

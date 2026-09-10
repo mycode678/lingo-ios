@@ -4,13 +4,19 @@ import SwiftUI
 ///
 /// 三块，从上到下按"最该先看"排：
 ///   ① 三个分项   —— 音准/节奏/连读，一行就完，先知道弱在哪一项
-///   ② 一句话诊断 —— 毛病在哪、怎么练
-///   ③ 逐词标色   —— 点任一个词，先放原声再放你的，来回听差别
+///   ② 逐词标色   —— 点任一个词，先放原声再放你的，来回听差别
+///   ③ 一句话诊断 —— 毛病在哪、怎么练
 ///
-/// 分项本来排在最后。字号调到最大时诊断能写满一屏，分项被顶到看不见的地方 ——
-/// 最该一眼看到的数字反而要滚半天，所以提到最上面。
+/// 顺序改过两次，都是看真机截图改的：
+/// · 分项本来在最后 —— 字号调大时诊断写满一屏，最该一眼看到的数字要滚半天；
+/// · 逐词标色本来在诊断后面 —— 真机上一个词都露不出来，而"点红词只播那个词"
+///   才是最直接的"听出差别"，是这个 App 最值钱的东西。
 struct CompareView: View {
     let diff: Compare
+    /// 这次比的是不是**用户划的那一段**（不是整句）。
+    /// 只有划了选区才需要说明"这次只比对：xxx" —— 整句时那行是废话，
+    /// 而它占两行，正好把逐词标色挤出第一屏。
+    var scoped: Bool = false
     @ObservedObject var rec = Recorder.shared
     @State private var playing: Int?
     /// 跟读结果这块的字号，用户自己调（精听设置里）。
@@ -38,7 +44,7 @@ struct CompareView: View {
 
     /// 现在拆的是整句还是你划的那一段 —— 不写清楚，分数低了会以为是自己整句念坏了
     @ViewBuilder private var scope: some View {
-        if !sentence.isEmpty, diff.words.count < 30 {
+        if scoped, !sentence.isEmpty, diff.words.count < 30 {
             HStack(spacing: T.s2) {
                 Image(systemName: "scissors").font(.system(size: fSmall - 1))
                 Text("这次只比对：" + sentence).lineLimit(2)
