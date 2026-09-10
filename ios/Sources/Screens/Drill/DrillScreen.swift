@@ -583,10 +583,6 @@ struct DrillScreen: View {
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
-                // 整块内容垂直居中：波形封顶 260 之后，不显示文字时下面会空出一截。
-                // 靠"把波形抻长"去填是拿一个毛病盖另一个毛病（他连着说了两次太高），
-                // 改成把空白平分到上下两边 —— 波形也顺带往拇指那边落一点。
-                Spacer(minLength: 0)
                 waveWithEdgeTaps
                     .frame(minHeight: 150, maxHeight: waveMax)
                     .padding(.horizontal, T.side).auditBlock("波形")
@@ -598,11 +594,16 @@ struct DrillScreen: View {
                     // 但新用户第一次进来就是一片波形，不知道该干嘛 ——
                     // 空着的那块地给一句话，比留一片灰底强。
                     if !anyText {
+                        // 波形封顶 260 之后，不显示文字时下面空出一截。
+                        // 试过在外层加 Spacer 把整块居中 —— 不管用，
+                        // swipeArea 里那个 Spacer 会把余量先吃光。
+                        // 改成让这段引导自己占住那块地并垂直居中，视觉重心就配平了，
+                        // 不再像"下面塌了一块"。
                         Text("听不懂就在波形上圈出那半秒，反复听。\n要看原文，点下面控制条里的「显示」。")
                             .font(.system(size: T.f2)).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center).lineSpacing(3)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, T.s2).padding(.horizontal, T.s6)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, T.s6)
                     }
                     if anyText {
                         // 卡片只要文字实际那么高（封顶屏高 35%），**别吃光剩余空间** ——
@@ -618,7 +619,6 @@ struct DrillScreen: View {
                 .accessibilityElement(children: .contain)   // 不声明的话 UI 测试找不到这块
                 .accessibilityIdentifier("swipeArea")
                 .simultaneousGesture(swipeToStep)
-                Spacer(minLength: 0)
             }
             .padding(.top, 6)
             .frame(maxHeight: .infinity)
