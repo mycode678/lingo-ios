@@ -159,6 +159,9 @@ struct TrainSessionScreen: View {
         _m = StateObject(wrappedValue: TrainSessionModel(mode: mode))
     }
 
+    /// 题面居中时用的最小高度：留出控制条和安全区之后剩多少
+    @State private var centerRoom: CGFloat = 320
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -167,8 +170,12 @@ struct TrainSessionScreen: View {
                 } else if m.finished {
                     done
                 } else {
-                    ScrollView { question.padding(T.side) }
-                    Spacer(minLength: 0)
+                    // 题面垂直居中。原来钉在顶上，一道两行的填空题下面空掉四分之三屏，
+                    // 真机截图上整块黑。题长的时候照样能滚。
+                    ScrollView {
+                        question.padding(T.side)
+                            .frame(maxWidth: .infinity, minHeight: centerRoom, alignment: .center)
+                    }
                     controls                     // 高频动作钉在最下面（拇指区）
                 }
             }
@@ -184,6 +191,11 @@ struct TrainSessionScreen: View {
                         Text(m.progress).font(.system(size: T.f2)).monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+            .background {
+                GeometryReader { g in
+                    Color.clear.onAppear { centerRoom = max(200, g.size.height - T.hBig - 40) }
                 }
             }
             .onAppear { m.load() }
@@ -254,8 +266,12 @@ struct TrainSessionScreen: View {
                 .font(.system(size: T.f1)).foregroundStyle(.secondary)
             FlowRow(spacing: 2) {
                 ForEach(it.words.indices, id: \.self) { i in
-                    HStack(spacing: 2) {
+                    // 每个"词＋竖线"整体等高，且底部对齐 ——
+                    // 原来词是文字高度、竖线是 34 点，两者混排时后面的词会被顶到
+                    // 上一行的基线之上（真机截图上 finish 就浮起来了）。
+                    HStack(alignment: .center, spacing: 2) {
                         Text(it.words[i].text).font(.system(size: T.f4))
+                            .frame(height: 34)
                         if i < it.words.count - 1 {
                             let mine = m.cuts.contains(i)
                             let truth = q.answer.contains(i)

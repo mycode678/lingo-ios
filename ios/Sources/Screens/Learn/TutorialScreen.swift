@@ -154,17 +154,24 @@ struct ExampleCard: View {
                 // 命中的那几个词标出来 —— 光放音频，用户不知道该听哪儿
                 RichText(highlight(it.en)).font(.system(size: T.f3))
                 Text(why).font(.system(size: T.f1)).foregroundStyle(.secondary)
+                // 两个按钮的字不许折行：真机上"播放整句"被挤成了两行。
+                // 词组长的时候截断，别把按钮撑成两层楼。
                 HStack(spacing: T.s2) {
                     Button { svc.play(it) } label: {
-                        Label("播放整句", systemImage: "play.fill")
+                        Label("整句", systemImage: "play.fill")
+                            .font(.system(size: T.f2))
+                            .lineLimit(1).fixedSize()
                             .frame(minHeight: T.hCtl).padding(.horizontal, T.s3)
                     }
                     .buttonStyle(.bordered)
                     Button { svc.playPhrase(it, phrase) } label: {
                         Label("只听「\(phrase)」", systemImage: "scope")
+                            .font(.system(size: T.f2))
+                            .lineLimit(1).truncationMode(.middle)
                             .frame(minHeight: T.hCtl).padding(.horizontal, T.s3)
                     }
                     .buttonStyle(.bordered)
+                    Spacer(minLength: 0)
                 }
             } else if missing {
                 Text("这一条要用你装的材料举例。去「材料」里装一个包，回来就有真音频了。")

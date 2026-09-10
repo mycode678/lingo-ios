@@ -93,6 +93,19 @@ final class TrainKitTests: XCTestCase {
         XCTAssertFalse(q.blanks.contains(0), "第一个词是实词 Smith，不该被挖")
     }
 
+    /// 句首**永远**不挖 —— 哪怕它是虚词。
+    /// 真机截图上出过："___ match went all ___ way"，一上来就是空，
+    /// 用户连个起步的抓手都没有。
+    func testNeverBlankTheFirstWord() {
+        // 第一个词是虚词 The：不加这条规则的话它铁定被挖
+        let ws = sent([("The", 0.06, 0.02), ("match", 0.30, 0.02), ("went", 0.22, 0.02),
+                       ("all", 0.10, 0.01), ("the", 0.06, 0.01), ("way", 0.26, 0.02),
+                       ("to", 0.07, 0.01), ("a", 0.05, 0.01), ("finish", 0.34, 0)])
+        let q = BlankQuiz.make(TrainKit.analyze(ws))
+        XCTAssertFalse(q.blanks.isEmpty, "该挖的还是要挖")
+        XCTAssertFalse(q.blanks.contains(0), "句首被挖了：" + q.prompt())
+    }
+
     func testBlankGradingIgnoresCaseAndPunctuation() {
         let q = BlankQuiz.make(TrainKit.analyze(demo))
         let i = q.blanks[0]

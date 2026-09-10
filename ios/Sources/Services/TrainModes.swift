@@ -100,6 +100,9 @@ struct BlankQuiz: Equatable {
         var picked: [Int] = []
         for group in [weakFn, weakOnly, fnOnly] {
             for i in group where picked.count < cap {
+                // **句首不挖**。第一个词就是空的话，用户连个起步的抓手都没有
+                // （真机截图上就是这样：一上来 "___ match went all ___ way"）。
+                if i == 0 { continue }
                 // 别挖出连着三个空 —— 那不是听力题，是猜谜
                 if picked.contains(i - 1) && picked.contains(i - 2) { continue }
                 picked.append(i)
