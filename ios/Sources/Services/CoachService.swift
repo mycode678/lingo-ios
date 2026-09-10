@@ -61,31 +61,20 @@ final class CoachService: ObservableObject {
 
     static let freeDaily = 100
 
-    private var today: String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = .current
-        return f.string(from: Date())
-    }
+    /// 额度统一交给 `EntitlementService` 管 —— 会员档位不同、免费的还是七天试用，
+    /// 这些规则只该有一处。（原来这儿自己记一套，加了会员之后就会两套数打架。）
+    private var ent: EntitlementService { .shared }
 
-    func usedToday() -> Int {
-        (try? db.row("SELECT used FROM quota WHERE kind='ai' AND period=?", [today])?["used"] as? Int)
-            as? Int ?? 0
-    }
-
-    func remainingToday() -> Int { max(0, Self.freeDaily - usedToday()) }
-
-    private func bump() {
-        try? db.run("""
-            INSERT INTO quota(kind, period, used) VALUES('ai', ?, 1)
-            ON CONFLICT(kind, period) DO UPDATE SET used = used + 1
-            """, [today])
-    }
+    func usedToday() -> Int { ent.used(.ai) }
+    func remainingToday() -> Int { ent.remaining(.ai) ?? Int.max }
+    private func bump() { ent.consume(.ai) }
 
     // MARK: 拆解
 
     /// 把逐词比对的结果讲成人话。返回 Markdown 风格的纯文本。
     func explain(sentence: String, diff: Compare) async throws -> String {
         guard hasKey else { throw Err.noKey }
-        guard remainingToday() > 0 else { throw Err.quota(Self.freeDaily) }
+        guard ent.allowed(.ai) else { throw Err.quota(ent.cap(.ai) ?? 0) }
 
         // 只发数字，不发音频。每个词一行：原声多长、你多长、准不准、该连没连。
         var lines: [String] = []

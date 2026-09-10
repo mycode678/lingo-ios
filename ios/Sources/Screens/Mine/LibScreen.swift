@@ -9,6 +9,11 @@ struct LibScreen: View {
     @State private var heat: [Int: Int] = [:]
     @State private var showSettings = false
     @State private var packs: [CatalogService.Pack] = []
+    @State private var showMember = false
+    @State private var showPoster = false
+    @State private var streak = 0
+    @State private var trained = 0
+    @StateObject private var ent = EntitlementService.shared
 
     var body: some View {
         NavigationStack {
@@ -24,6 +29,29 @@ struct LibScreen: View {
                         .padding(.vertical, 4)
                     }
                 }
+                // 会员 + 奖励。**这是 App 里唯一一处常驻的会员入口** ——
+                // 用户批评过别家"不断的弹购买会员窗口"，所以不做定时弹窗。
+                Section {
+                    Button { showMember = true } label: {
+                        HStack {
+                            Label(ent.tier.paid ? "\(ent.tier.name)会员" : "免费用户",
+                                  systemImage: ent.tier.paid ? "crown.fill" : "person")
+                            Spacer()
+                            if let left = ent.remaining(.sentenceDaily) {
+                                Text("今天还剩 \(left) 句").font(.system(size: T.f1))
+                                    .foregroundStyle(.secondary).monospacedDigit()
+                            }
+                            Image(systemName: "chevron.right").font(.system(size: T.f1))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .accessibilityIdentifier("lib.member")
+                    Button { showPoster = true } label: {
+                        Label("生成成绩海报", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("lib.poster")
+                }
+
                 Section("学习中的词") {
                     if loading { HStack { Spacer(); ProgressView(); Spacer() } }
                     ForEach(lib?.words ?? []) { w in
@@ -104,6 +132,16 @@ struct LibScreen: View {
                 }
             }
             .sheet(isPresented: $showSettings) { SettingsScreen() }
+            .sheet(isPresented: $showMember) { MemberScreen { showMember = false } }
+            .sheet(isPresented: $showPoster) {
+                PosterScreen(streak: streak,
+                             totalSentences: PracticeService.shared.practicedCount(),
+                             todayDone: PracticeService.shared.todayCount(),
+                             avgScore: nil,
+                             badges: RewardService.shared.badges(
+                                streak: streak, total: PracticeService.shared.practicedCount()),
+                             onClose: { showPoster = false })
+            }
             .refreshable { await load() }
             .task { await load(); await refreshCache(); packs = CatalogService.shared.packs() }
         }
@@ -122,8 +160,15 @@ struct LibScreen: View {
 
     private func load() async {
         loading = true
+        // 热力图和连续天数改成本机算（`day` 表）——
+        // 以前找服务器要，断网这一屏就一片 0，看着像"你从没练过"。
+        let p = PracticeService.shared
+        heat = p.heat()
+        streak = p.streak()
+        trained = TrainService.shared.today().done
+        ent.reload()
+        // 词表还从服务器取（那是查词功能的一部分，本来就要联网）；取不到就空着。
         lib = try? await Api.lib()
-        heat = (try? await Api.heat()) ?? [:]
         loading = false
         await store.loadDueCount()
     }
