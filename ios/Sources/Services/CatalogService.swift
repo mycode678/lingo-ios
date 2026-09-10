@@ -205,6 +205,16 @@ final class CatalogService: ObservableObject {
         }
     }
 
+    /// 这一句的音频文件在本机哪儿。
+    /// **凡是要放包里的音频，都走这里** —— 之前精听台自己按 `src` 当服务器路径
+    /// 去 load，包里的句子 src 是句子 id 不是路径，于是把刚装好的本机音频顶掉了。
+    func audioURL(_ packId: String, _ sentId: String) -> URL? {
+        guard let p = open(packId),
+              let r = try? p.row("SELECT audio FROM sentences WHERE id=?", [sentId]),
+              let name = r["audio"] as? String else { return nil }
+        return dir(packId).appendingPathComponent("audio").appendingPathComponent(name)
+    }
+
     /// 一句的词边界（包里预先算好的，装机即用）
     func words(_ packId: String, _ sentId: String) -> [(w: String, s: Double, e: Double)] {
         guard let p = open(packId) else { return [] }

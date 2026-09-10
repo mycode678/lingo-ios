@@ -290,16 +290,18 @@ final class DrillModel: ObservableObject {
             return
         }
         do {
-            try Player.shared.load(local: sent.audio)
+            try Player.shared.load(local: cat.audioURL(packId, s.src) ?? sent.audio)
         } catch {
             note = "音频读不出来：\(error.localizedDescription)"
             return
         }
         view = (0, Player.shared.duration)
-        // 诊断用：真机控制台抓不到 print，所以直接显示在界面上（只在 -demo 下）
+        // 测试要能自己判"装进播放器的是不是这一句" —— 光靠我看截图不算数。
+        // 差 0.25 秒以上就是装错了音频（这次翻车就是装成了上一句的 2.8 秒）。
         if Demo.on {
-            note = String(format: "诊断 包里写%.2fs 播放器%.2fs 文件%@",
-                          sent.dur, Player.shared.duration, sent.audio.lastPathComponent)
+            let ok = abs(Player.shared.duration - sent.dur) < 0.25
+            note = ok ? "AUDIO-OK" : String(format: "AUDIO-BAD 该 %.2fs 实际 %.2fs",
+                                            sent.dur, Player.shared.duration)
         }
         words = Self.padOnsets(cat.words(packId, s.src).map { Api.Word(w: $0.w, s: $0.s, e: $0.e) },
                                duration: Player.shared.duration)

@@ -74,6 +74,15 @@ final class RealFlowUITests: XCTestCase {
         start.tap()
         sleep(3)
 
+        // **装进播放器的必须是这一句的音频**。
+        // 上一轮就栽在这儿：界面把包里的句子接上了，可另一处又按 src 当服务器路径
+        // 重新 load 了一次，把真音频顶掉 —— 词是这句的、声音是上一句的，
+        // 截图上看着"能用"，其实全错。App 在 -demo 下把结论写成一行，这里直接判。
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'AUDIO-BAD'")).firstMatch
+            .waitForExistence(timeout: 8),
+            "装进播放器的音频跟这句话对不上：" + seen())
+
         // 波形要真的画出来了（控制条在＝这一屏起来了）
         XCTAssertTrue(app.scrollViews["controlStrip"].waitForExistence(timeout: 15),
                       "精听台没起来：" + seen())

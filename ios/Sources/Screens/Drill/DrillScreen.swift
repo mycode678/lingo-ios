@@ -197,7 +197,17 @@ struct DrillScreen: View {
             let seg = (switched && loopWhole) ? nil : vm.selection
             if fresh {
                 player.pause()
-                try? await Player.shared.load(src: s.src)
+                // 材料包里的句子：src 是**句子 id**，不是服务器路径。
+                // 原来这儿一律 `load(src:)`，于是包里的句子被当成服务器路径去下 ——
+                // 正式使用时下不到（try? 把错吞了，留着上一句的音频），
+                // -demo 下更糟：合成波形直接把刚装好的真音频盖掉。
+                // 真机诊断截出来的就是这个：诊断行写着"播放器 1.67s"，
+                // 屏幕上的波形和时间轴却还是上一句的 2.8 秒。
+                if let pid = s.packId, let u = CatalogService.shared.audioURL(pid, s.src) {
+                    try? Player.shared.load(local: u)
+                } else {
+                    try? await Player.shared.load(src: s.src)
+                }
                 vm.zoomAll()
             }
             player.claim(loop: player.loop, times: loopTimes,
