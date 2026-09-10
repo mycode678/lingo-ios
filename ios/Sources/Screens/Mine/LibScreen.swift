@@ -8,6 +8,7 @@ struct LibScreen: View {
     @State private var cacheMB = 0.0
     @State private var heat: [Int: Int] = [:]
     @State private var showSettings = false
+    @State private var packs: [CatalogService.Pack] = []
 
     var body: some View {
         NavigationStack {
@@ -52,6 +53,32 @@ struct LibScreen: View {
                         .frame(height: 34)
                         .padding(.vertical, 2)
                 }
+                Section {
+                    if packs.isEmpty {
+                        Text("还没装材料包。装了包就能完全离线练 —— 句子、译文、"
+                             + "词边界都在包里，一次网都不用联。")
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
+                    ForEach(packs, id: \.id) { p in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(p.name).font(.system(size: 16, weight: .medium))
+                                Text("\(p.sentences) 句" + (p.restricted ? "　·　受限" : ""))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("删除", role: .destructive) {
+                                CatalogService.shared.remove(p.id)
+                                packs = CatalogService.shared.packs()
+                            }
+                            .buttonStyle(.borderless).font(.caption)
+                        }
+                    }
+                } header: { Text("材料包") } footer: {
+                    Text("删包只删材料，练习进度、收藏、难点、录音一条都不会丢 —— "
+                         + "它们记的是句子编号，包装回来还在。")
+                }
+
                 Section("离线") {
                     HStack {
                         Text("已缓存音频")
@@ -78,7 +105,7 @@ struct LibScreen: View {
             }
             .sheet(isPresented: $showSettings) { SettingsScreen() }
             .refreshable { await load() }
-            .task { await load(); await refreshCache() }
+            .task { await load(); await refreshCache(); packs = CatalogService.shared.packs() }
         }
     }
 
@@ -117,6 +144,7 @@ struct SettingsScreen: View {
     @AppStorage("ui.sentFont") private var sentFont = 21.0
     @AppStorage("ui.accent") private var accent = "#2f6fd0"
     @AppStorage("ui.scheme") private var scheme = "system"
+    @AppStorage("owner.key") private var ownerKey = ""
 
     private let accents: [(String, String)] = [
         ("#2f6fd0", "蓝"), ("#105f6e", "墨绿"), ("#c0392b", "砖红"),
@@ -166,6 +194,18 @@ struct SettingsScreen: View {
                     fontRow("精听台句子", $sentFont, 16...32)
                 } header: { Text("字号") } footer: {
                     Text("拖动就能看到下面的示例跟着变，调到看着舒服为止。")
+                }
+
+                Section {
+                    // 版权受限的材料包（朗文那批）只有填了这个口令才装得上。
+                    // 方案原话：「词典例句不开……当然我自己要可以用」。
+                    // 真正的防线是那种包根本不往 CDN 上放，这里是第二道，
+                    // 而且判断在 Service 入口，不是界面藏起来。
+                    SecureField("材料口令（没有就留空）", text: $ownerKey)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("受限材料") } footer: {
+                    Text(ownerKey.isEmpty ? "留空就是普通用户：带版权标记的材料包装不上。"
+                                          : "已填。带版权标记的材料包可以装。")
                 }
 
                 Section {
