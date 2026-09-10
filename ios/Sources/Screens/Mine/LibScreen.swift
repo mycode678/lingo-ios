@@ -225,9 +225,9 @@ struct SettingsScreen: View {
                         }
                     }
                     if let r = result { Text(r).font(.caption).foregroundStyle(.secondary) }
-                    TextField("账号（局域网留空）", text: $user)
+                    TextField("账号（必填，局域网也要）", text: $user)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("密码", text: $pass)
+                    SecureField("密码（必填）", text: $pass)
                 } header: {
                     Text("服务器")
                 } footer: {

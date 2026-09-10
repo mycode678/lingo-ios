@@ -18,6 +18,7 @@ struct PackStoreScreen: View {
     @State private var preview: CatalogService.RemoteItem?
     @State private var showImport = false
     @State private var showVideo = false
+    @State private var showSettings = false
 
     /// 身份。方案里他列的就是这几类人。
     private let whoList = ["入门", "日常口语", "出国", "雅思", "TED", "VOA"]
@@ -62,7 +63,11 @@ struct PackStoreScreen: View {
                     } description: {
                         Text(err + "\n已经装好的包在下面，断网也能练。")
                     } actions: {
-                        Button("重试") { Task { await load() } }.buttonStyle(.borderedProminent)
+                        // 最常见的原因就是没填账号密码（服务器一律要，局域网也要）。
+                        // 让人从这儿一步到设置，别逼他自己去猜该点哪儿。
+                        Button("去填账号密码") { showSettings = true }
+                            .buttonStyle(.borderedProminent)
+                        Button("重试") { Task { await load() } }
                     }
                 } else if shown.isEmpty {
                     Text("这一类暂时还没有材料。").foregroundStyle(.secondary)
@@ -83,6 +88,9 @@ struct PackStoreScreen: View {
             .task { await load() }
             .sheet(item: $preview) { previewSheet($0) }
             .sheet(isPresented: $showVideo) { VideoFollowScreen { showVideo = false } }
+            .sheet(isPresented: $showSettings, onDismiss: { Task { await load() } }) {
+                SettingsScreen()
+            }
             .sheet(isPresented: $showImport) {
                 ImportScreen { showImport = false; Task { await load() } }
             }

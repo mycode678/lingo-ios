@@ -148,7 +148,8 @@ enum Api {
         case unauthorized, http(Int), offline
         var errorDescription: String? {
             switch self {
-            case .unauthorized: return "账号或密码不对（在设置里填服务器账号密码）"
+            case .unauthorized: return "服务器要账号密码。去「我的 → 右上角齿轮 → 服务器」填一下 ——\n"
+                                     + "局域网也要填，服务器那边没给内网开后门。"
             case .http(let c):  return "服务器返回 \(c)"
             case .offline:      return "断网演练：这次请求被挡下了"
             }
