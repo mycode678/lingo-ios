@@ -49,9 +49,9 @@ struct DBSelfTest: View {
             let tabs = try db.rows(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
                 .compactMap { $0["name"] as? String }.sorted()
-            let want = ["fav", "mark", "meta", "progress", "quota", "rec", "sent", "unlock"]
+            let want = ["fav", "mark", "meta", "pack", "progress", "quota", "rec", "sent", "unlock"]
             out.append(("dbTables", "表",
-                        tabs == want ? "八张都在" : "对不上：\(tabs.joined(separator: ","))"))
+                        tabs == want ? "九张都在" : "对不上：\(tabs.joined(separator: ","))"))
 
             // ⑦ 收藏和难点也走本机
             let ps2 = PracticeService(db: db)
@@ -65,6 +65,42 @@ struct DBSelfTest: View {
             out.append(("dbFavMark", "收藏与难点",
                         favOK && unfavOK && mk.count == 1 && abs(mk[0].1 - 1.5) < 1e-9
                         ? "OK" : "不对 fav=\(favOK)/\(unfavOK) marks=\(mk.count)"))
+
+            // ⑧ 材料包：装 → 查 → 删，删完用户数据必须一条不少
+            //    这是"脱离服务器"的最后一块，也是最容易做漏的一块。
+            if let zip = Bundle.main.url(forResource: "testpack", withExtension: "zip") {
+                let cat = CatalogService(db: db)
+                do {
+                    let pk = try cat.install(zip: zip)
+                    let list = cat.packs()
+                    let sents = cat.sentences(pk.id)
+                    let ws = sents.first.map { cat.words(pk.id, $0.id) } ?? []
+                    let audioOK = sents.allSatisfy {
+                        FileManager.default.fileExists(atPath: $0.audio.path)
+                    }
+                    // 先往用户数据里放点东西，等下删包看它还在不在
+                    let ps3 = PracticeService(db: db)
+                    ps3.setFav("packguard/1", true)
+                    _ = ps3.grade("packguard/1", 3)
+                    cat.remove(pk.id)
+                    let gone = cat.packs().isEmpty
+                        && !FileManager.default.fileExists(
+                            atPath: CatalogService.root.appendingPathComponent(pk.id).path)
+                    let userKept = ps3.isFav("packguard/1") && ps3.progress("packguard/1") != nil
+
+                    out.append(("packInstall", "装包",
+                                pk.sentences == 3 && list.count == 1 && sents.count == 3
+                                && ws.count > 0 && audioOK
+                                ? "OK" : "不对 句\(sents.count) 词\(ws.count) 音频\(audioOK)"))
+                    out.append(("packRemove", "删包不动用户数据",
+                                gone && userKept ? "OK"
+                                : "不对 删干净=\(gone) 用户数据还在=\(userKept)"))
+                } catch {
+                    out.append(("packInstall", "装包", "出错 \(error)"))
+                }
+            } else {
+                out.append(("packInstall", "装包", "没找到测试包"))
+            }
 
             if write {
                 // ③ 写一条进度（这一趟只写，写完测试会杀掉 App）

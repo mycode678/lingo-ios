@@ -140,6 +140,19 @@ final class DB {
         CREATE TABLE IF NOT EXISTS meta(
             k TEXT PRIMARY KEY,
             v TEXT NOT NULL);
+        """,
+
+        // v3：装了哪些材料包。**只记账，不存内容** ——
+        // 包的内容在 Packs/<id>/pack.sqlite 里，删包只删那个目录，
+        // 这张表跟着删一行，用户数据（进度收藏难点录音）一条都不动。
+        """
+        CREATE TABLE IF NOT EXISTS pack(
+            id           TEXT PRIMARY KEY,
+            name         TEXT NOT NULL,
+            version      INTEGER NOT NULL DEFAULT 1,
+            sentences    INTEGER NOT NULL DEFAULT 0,
+            restricted   INTEGER NOT NULL DEFAULT 0,
+            installed_at REAL NOT NULL DEFAULT 0);
         """
     ]
 
