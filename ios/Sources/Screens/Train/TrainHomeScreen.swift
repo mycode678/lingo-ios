@@ -43,7 +43,11 @@ struct TrainHomeScreen: View {
             .sheet(isPresented: $showTutorial) {
                 TutorialScreen { showTutorial = false }
             }
-            .onAppear(perform: refresh)
+            .onAppear {
+                refresh()
+                // 云端截图用：-mode blank 直接把那个练法打开
+                if let m = Demo.trainMode, running == nil { running = m }
+            }
         }
     }
 

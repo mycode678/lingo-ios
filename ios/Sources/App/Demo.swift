@@ -66,6 +66,14 @@ enum Demo {
     /// -usepack：启动时把随包带的测试材料包装上（如果还没装）。
     /// 有它才能在模拟器里跑通"装了包 → 在精听台练起来"这条**真实用户流程**。
     static var useTestPack: Bool { on && ProcessInfo.processInfo.arguments.contains("-usepack") }
+    /// -mode blank|group|stress|ladder|wordId|dictation|shadow：
+    /// 启动直接打开这个练法。云端模拟器只会按启动参数截图，点不进二级页面，
+    /// 没有它练法界面在 CI 里一张图都出不来（这次真机锁屏就抓瞎了）。
+    static var trainMode: TrainMode? {
+        let a = ProcessInfo.processInfo.arguments
+        guard on, let i = a.firstIndex(of: "-mode"), i + 1 < a.count else { return nil }
+        return TrainMode(rawValue: a[i + 1])
+    }
     /// -noplay：关掉"切到一句就自动播"。只给测试用 ——
     /// 有它才验得了"还没听就不该冒出打分行"。
     static var noAutoPlay: Bool { on && ProcessInfo.processInfo.arguments.contains("-noplay") }
