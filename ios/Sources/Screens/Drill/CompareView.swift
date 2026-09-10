@@ -23,11 +23,25 @@ struct CompareView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: T.s3) {
+            scope
             scores
             notes
             aiBlock
             wordRow
             legend
+        }
+    }
+
+    /// 现在拆的是整句还是你划的那一段 —— 不写清楚，分数低了会以为是自己整句念坏了
+    @ViewBuilder private var scope: some View {
+        if !sentence.isEmpty, diff.words.count < 30 {
+            HStack(spacing: T.s2) {
+                Image(systemName: "scissors").font(.system(size: fSmall - 1))
+                Text("这次只比对：" + sentence).lineLimit(2)
+                    .font(.system(size: fSmall))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
         }
     }
 

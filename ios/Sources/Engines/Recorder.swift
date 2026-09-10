@@ -25,6 +25,8 @@ final class Recorder: NSObject, ObservableObject {
     /// 逐词比对的结果（哪个词不准、重音在哪、该连读的连没连、一句话诊断）。
     /// 手机上现算，不联网。
     @Published private(set) var diff: Compare?
+    /// 这次比对针对的是哪段文字（划了选区就只是那几个词）。AI 拆解也只拆这一段。
+    @Published private(set) var refText = ""
 
     /// 只给截图用：假装刚录完一条，好把"跟读结果"那块渲染出来自查。
     /// 真机上永远走不到（Demo.on 只有 -demo 启动才是 true）。
@@ -134,6 +136,22 @@ final class Recorder: NSObject, ObservableObject {
         let nat = Player.shared.pcm16k(range: range)
         guard nat.count > 1000 else { message = "原声还没载入"; return }
 
+        // 划了选区就**只练这一段**：原声按选区裁（上面那行已经裁了），
+        // 参考文本和参考词边界也必须跟着只留这一段。
+        // 以前只裁了音频、文本还是整句 —— 你只念了三个词，却拿整句去对齐，
+        // 结果必然是乱的（这个错在手机和网页上都犯了）。
+        var natW = natWords
+        var refText = sentence?.en ?? ""
+        if let r = range, !natWords.isEmpty {
+            let sel = natWords.filter { $0.e > r.lowerBound + 0.02 && $0.s < r.upperBound - 0.02 }
+            if !sel.isEmpty {
+                // 时间轴平移到"选区开头＝0"，跟裁出来的那段音频对齐
+                natW = sel.map { w in var v = w; v.s -= r.lowerBound; v.e -= r.lowerBound; return v }
+                refText = sel.map(\.w).joined(separator: " ")
+            }
+        }
+        self.refText = refText          // AI 拆解也只针对这一段
+
         let A = analyze(nat), B = analyze(mine)
         let g = grade(A, B)
         curve = buildCurve(A, B, g.path)
@@ -149,9 +167,9 @@ final class Recorder: NSObject, ObservableObject {
         if #available(iOS 17.0, *) {
             if !Aligner.shared.isAvailable {
                 message = "这个安装包里没带对齐模型，逐词比对用不了"
-            } else if natWords.isEmpty {
+            } else if natW.isEmpty {
                 message = "这句还没切好词，逐词比对要等切词完成"
-            } else if (sentence?.en ?? "").isEmpty {
+            } else if refText.isEmpty {
                 message = "没有原文，没法逐词比对"
             } else {
                 message = "正在逐词比对…"
@@ -160,14 +178,14 @@ final class Recorder: NSObject, ObservableObject {
                     // 人按下录音键到真正开口，中间总有半秒到一秒；这段静音不剪掉，
                     // 整条时间轴都被推后，每个词的时长占比全算错（节奏分会莫名其妙很低）。
                     let (trimmed, lead) = Self.trimSilence(mine)
-                    let myWords = try await Aligner.shared.align(pcm: trimmed, text: sentence!.en)
+                    let myWords = try await Aligner.shared.align(pcm: trimmed, text: refText)
                         .map { w in
                             // 时间轴换回原录音的坐标，不然点词回放会对不上
                             var v = w; v.start += lead; v.end += lead; return v
                         }
-                    let d = Compare.make(nat: natWords, mine: myWords, natPCM: nat, myPCM: mine)
+                    let d = Compare.make(nat: natW, mine: myWords, natPCM: nat, myPCM: mine)
                     if d.words.isEmpty {
-                        message = "对不上词：原声 \(natWords.count) 个，你的 \(myWords.count) 个"
+                        message = "对不上词：原声 \(natW.count) 个，你的 \(myWords.count) 个"
                     } else {
                         diff = d
                         score = Score(words: d.soundScore, tone: g.tone, rhythm: d.rhythmScore)

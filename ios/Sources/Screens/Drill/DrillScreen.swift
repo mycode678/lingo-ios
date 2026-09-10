@@ -1022,7 +1022,7 @@ struct DrillScreen: View {
             }
             // 逐词比对（手机上现算的）—— 有它就以它为主，它比听写文本有用得多
             if let d = rec.diff {
-                CompareView(diff: d, sentence: store.current?.en ?? "")
+                CompareView(diff: d, sentence: rec.refText.isEmpty ? (store.current?.en ?? "") : rec.refText)
             }
             // 机器听写只是佐证："它听成了什么"。有逐词比对时降级成一行小字。
             if let h = rec.heard, !h.isEmpty {
