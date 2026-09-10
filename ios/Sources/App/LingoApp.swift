@@ -90,12 +90,19 @@ struct LingoApp: App {
                     // 第一版我把它写在 return 后面，-demo 下根本执行不到，
                     // 等于测试钩子是死的，还以为跑的是真包。
                     if Demo.useTestPack {
-                        if CatalogService.shared.packs().isEmpty,
+                        let cat = CatalogService.shared
+                        // 判据不是"有没有记账行"，而是**能不能真读出句子**。
+                        // 云端栽过：pack 表里有行、pack.sqlite 却读不出内容，
+                        // 于是"已经有包了"就跳过安装，精听台空屏、练法说没材料，
+                        // 两边症状还互相矛盾，查了半天。按能不能用来判就自愈了。
+                        let usable = cat.packs().first { !cat.sentences($0.id, limit: 1).isEmpty }
+                        if usable == nil,
                            let z = Bundle.main.url(forResource: "testpack", withExtension: "zip") {
                             UserDefaults.standard.set("test", forKey: "owner.key")
-                            _ = try? CatalogService.shared.install(zip: z)
+                            for p in cat.packs() { cat.remove(p.id) }   // 半残的先清掉
+                            _ = try? cat.install(zip: z)
                         }
-                        if let p = CatalogService.shared.packs().first {
+                        if let p = cat.packs().first(where: { !cat.sentences($0.id, limit: 1).isEmpty }) {
                             store.loadPack(p.id, name: p.name)
                             switch Demo.screen {
                             case "drill": nav.tab = 2

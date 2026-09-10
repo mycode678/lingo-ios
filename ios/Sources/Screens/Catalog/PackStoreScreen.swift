@@ -32,7 +32,11 @@ struct PackStoreScreen: View {
     private let whoList = ["入门", "日常口语", "出国", "雅思", "TED", "VOA"]
 
     private var shown: [CatalogService.RemoteItem] {
-        who.isEmpty ? remote : remote.filter { $0.who.contains(who) }
+        // **已装的不再出现在下面的目录里** —— 它已经在「已经装好的」那一段了。
+        // 真机截图上"朗文例句·入门"上下各出现一次，一个带「开始学」一个带对勾，
+        // 谁看了都得愣一下。下面这张单子的意思是"还能下什么"。
+        let list = who.isEmpty ? remote : remote.filter { $0.who.contains(who) }
+        return list.filter { !isOn($0.id) }
     }
     private func isOn(_ id: String) -> Bool { installed.contains { $0.id == id } }
 
@@ -174,12 +178,17 @@ struct PackStoreScreen: View {
                 store.loadPack(p.id, name: p.name)
                 nav.tab = 2
             } label: {
-                Label("开始学", systemImage: "play.fill")
+                // 这么窄的按钮里塞不下图标＋文字（真机上图标直接没了、字还偏右），
+                // 干脆只留文字，宽度按内容定
+                Text("开始学")
                     .font(.system(size: T.f2, weight: .medium))
+                    .fixedSize()
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("packs.start." + p.id)
         }
+        .listRowSeparatorTint(Color.primary.opacity(0.12))
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }   // 分隔线从最左画起，别只画右半截
         .swipeActions(edge: .trailing) {
             Button("删除", role: .destructive) {
                 cat.remove(p.id)

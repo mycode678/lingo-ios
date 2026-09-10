@@ -573,25 +573,20 @@ struct DrillScreen: View {
         // 这样两种情况都不难看：不显示文字时波形长满，显示文字时也不会空出一大片。
         let cardHeight: CGFloat = cardH(geo.size.height)
         let swipeRoom: CGFloat = 96
-        // 波形封顶。真机截图上它长到 360，占掉整屏六成 ——
-        // 可"圈出听不懂的那半秒"这件事，300 点绰绰有余，再高就是白占，
-        // 代价是原文和跟读结果全被挤到屏幕外。
-        //
-        // 但**封顶得看下面有没有人接这块地**：
-        //   勾了原文/译文 → 封顶 300，省下的给原文卡和跟读结果；
-        //   一个字都不显示（默认）→ 下面只有一行引导，硬封 300 就空出小半屏灰底
-        //     （第一版改完真机截图上就是这样，比原来还难看），所以放宽到 420。
+        // 波形封顶 260。这个数改过三次，记一下过程免得再来回：
+        //   360 → 他说占掉整屏六成，太高；
+        //   300/420（不显示文字时放宽到 420，为了不空出半屏灰底）→ 他又说太高；
+        //   现在一律 260 —— 圈半秒够用了，多出来的高度**不给波形，给下面的内容**。
+        // 空白问题不靠"把波形抻长"解决，那是拿一个毛病盖另一个毛病。
         let room: CGFloat = max(180, geo.size.height - 36 - cardHeight - swipeRoom)
-        let waveMax: CGFloat = min(anyText ? 300 : 420, room)
+        let waveMax: CGFloat = min(260, room)
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
-                // 波形按屏高比例给固定高度，剩下的全归原文卡。
-                // 原来让波形把富余全吃掉，长到 350 点 —— 太高了，一半就够看够划；
-                // 省下来的给"原文 + 录音波形"更值。
-                // 录过音之后是上下两条波形（原声在上、自己的在下），才给它长一截。
-                // 但**一个字都不显示时**（默认状态：先听声音不看字）下面没人接这块地，
-                // 钉死 28% 就会空出小半屏灰底 —— 这种时候让波形自己长满。
+                // 整块内容垂直居中：波形封顶 260 之后，不显示文字时下面会空出一截。
+                // 靠"把波形抻长"去填是拿一个毛病盖另一个毛病（他连着说了两次太高），
+                // 改成把空白平分到上下两边 —— 波形也顺带往拇指那边落一点。
+                Spacer(minLength: 0)
                 waveWithEdgeTaps
                     .frame(minHeight: 150, maxHeight: waveMax)
                     .padding(.horizontal, T.side).auditBlock("波形")
@@ -607,7 +602,7 @@ struct DrillScreen: View {
                             .font(.system(size: T.f2)).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center).lineSpacing(3)
                             .frame(maxWidth: .infinity)
-                            .padding(.top, T.s3).padding(.horizontal, T.s6)
+                            .padding(.top, T.s2).padding(.horizontal, T.s6)
                     }
                     if anyText {
                         // 卡片只要文字实际那么高（封顶屏高 35%），**别吃光剩余空间** ——
@@ -623,6 +618,7 @@ struct DrillScreen: View {
                 .accessibilityElement(children: .contain)   // 不声明的话 UI 测试找不到这块
                 .accessibilityIdentifier("swipeArea")
                 .simultaneousGesture(swipeToStep)
+                Spacer(minLength: 0)
             }
             .padding(.top, 6)
             .frame(maxHeight: .infinity)

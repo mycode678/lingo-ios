@@ -220,12 +220,29 @@ final class WaveUIView: UIView {
                 ctx.setStrokeColor(C.rulerTick.cgColor); ctx.setLineWidth(1)
                 ctx.move(to: CGPoint(x: a + 0.5, y: 2)); ctx.addLine(to: CGPoint(x: a + 0.5, y: laneBot))
                 ctx.strokePath()
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 10.5, weight: (inSel || isNow) ? .semibold : .regular),
-                    .foregroundColor: (inSel || isNow) ? C.chipSelInk : C.chipInk]
-                let t = NSAttributedString(string: w.w, attributes: attrs)
-                let sz = t.size()
-                if b - a > sz.width + 6 {
+                // 画词。**宽度不够不能就不画** —— 原来是 `if b - a > 字宽+6` 才画，
+                // 于是短词（the / went 这些）整片是空白，真机截图上前半句一个字都没有，
+                // 只剩一排竖线，看着像没加载出来。
+                // 改成：先缩字号，还放不下就截断成"首字母＋点"，总之每个词都留个记号。
+                let wide = min(W, b) - max(0, a)
+                let bold: UIFont.Weight = (inSel || isNow) ? .semibold : .regular
+                let ink = (inSel || isNow) ? C.chipSelInk : C.chipInk
+                var drawn: NSAttributedString?
+                for size in [10.5, 9.0, 8.0] as [CGFloat] {
+                    let t = NSAttributedString(string: w.w, attributes: [
+                        .font: UIFont.systemFont(ofSize: size, weight: bold),
+                        .foregroundColor: ink])
+                    if t.size().width + 3 <= wide { drawn = t; break }
+                }
+                if drawn == nil, let first = w.w.first {
+                    // 实在放不下：只画首字母，至少知道这儿有个词
+                    let t = NSAttributedString(string: String(first), attributes: [
+                        .font: UIFont.systemFont(ofSize: 8, weight: bold),
+                        .foregroundColor: ink])
+                    if t.size().width + 1 <= wide { drawn = t }
+                }
+                if let t = drawn {
+                    let sz = t.size()
                     t.draw(at: CGPoint(x: (max(0, a) + min(W, b)) / 2 - sz.width / 2, y: 3))
                 }
             }
