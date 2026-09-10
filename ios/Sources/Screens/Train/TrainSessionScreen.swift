@@ -52,10 +52,13 @@ final class TrainSessionModel: ObservableObject {
         // 档位要**先读出来再定倍速**：反过来的话这一句放的是上一句的档位
         if mode == .ladder { ladderLevel = svc.ladderLevel(it.id) }
         Task { @MainActor in
-            if Demo.on {
-                try? await player.load(src: it.id)
-            } else if let u = it.audio {
+            // 真包的句子带本机音频文件；没有才退回演示数据那条路。
+            // 原来先判 Demo.on，于是 -demo 下永远放合成波形 ——
+            // 练法界面看着有题，放出来的却不是这句话。
+            if let u = it.audio {
                 try? player.load(local: u)
+            } else {
+                try? await player.load(src: it.id)
             }
             player.rate = mode == .ladder ? SpeedLadder.rates[ladderLevel] : 1.0
             player.segment = nil

@@ -83,7 +83,11 @@ final class TrainService: ObservableObject {
                           var packId: String?; var audio: URL? }
 
     private func candidates() -> [Cand] {
-        if Demo.on { return demoCands() }
+        // **装了包就用真包**，演示数据只在一个包都没有时兜底。
+        // 原来是 `if Demo.on { return demoCands() }` —— 只要带 -demo 就全用假句子，
+        // 于是"真材料下能不能出题"这条永远测不到：测试看着绿，
+        // 出的却是演示那三句（真机截图上一眼看出来：1/1 题，句子还是 Excuse me…）。
+        if catalog.packs().isEmpty { return demoCands() }
         var out: [Cand] = []
         let due = PracticeService.shared.due(60)
         let packs = catalog.packs()
@@ -109,7 +113,7 @@ final class TrainService: ObservableObject {
 
     private func build(_ c: Cand) -> Item? {
         let raw: [TrainKit.Word]
-        if let pid = c.packId, !Demo.on {
+        if let pid = c.packId {
             raw = catalog.words(pid, c.id).map { TrainKit.Word($0.w, $0.s, $0.e) }
         } else {
             raw = demoWords(c.id)

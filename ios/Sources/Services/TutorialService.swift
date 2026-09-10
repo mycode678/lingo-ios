@@ -22,7 +22,8 @@ final class TutorialService: ObservableObject {
     func find(_ phrase: String) -> TrainService.Item? {
         if let c = cache[phrase] { return c }
         let want = phrase.lowercased()
-        if Demo.on {
+        // 同上：装了包就到真材料里找例子，演示数据只兜底
+        if catalog.packs().isEmpty {
             guard let i = Demo.sentences.firstIndex(where: { $0.en.lowercased().contains(want) })
             else { return nil }
             let s = Demo.sentences[i]
@@ -86,10 +87,10 @@ final class TutorialService: ObservableObject {
         player.claim()
         player.rate = 1.0
         Task { @MainActor in
-            if Demo.on {
-                try? await player.load(src: it.id)
-            } else if let u = it.audio {
-                try? player.load(local: u)
+            if let u = it.audio {
+                try? player.load(local: u)          // 真包：本机文件
+            } else {
+                try? await player.load(src: it.id)  // 演示数据兜底
             }
             go()
         }

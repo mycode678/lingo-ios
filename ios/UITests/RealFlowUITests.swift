@@ -120,6 +120,10 @@ final class RealFlowUITests: XCTestCase {
                            "练法 \(m) 出不了题 —— 材料包里明明有句子。屏上有：" + seen())
             XCTAssertTrue(app.buttons["train.play"].exists,
                           "练法 \(m) 里没有播放键：" + seen())
+            // 装了 200 句的包，一轮该出好几题。只出 1 题＝用的还是演示那几句
+            // （真机截图上就是这么露馅的：右上角 1/1，句子还是 Excuse me…）。
+            XCTAssertFalse(app.staticTexts["1/1"].exists,
+                           "练法 \(m) 只出了 1 题 —— 多半还在用演示数据，没读真包：" + seen())
             app.buttons["退出"].tap()
             sleep(2)
         }
