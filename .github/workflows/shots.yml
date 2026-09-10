@@ -26,6 +26,11 @@ jobs:
       - name: 隐私红线守卫
         run: ios/guard-privacy.sh
 
+      # 中文引号守卫：把 「」 打成 ASCII 的 " 会让 Swift 字符串断成三段，
+      # 报一堆 cannot find '某某' in scope。几毫秒的检查，别让它占掉一轮 CI。
+      - name: 中文引号守卫
+        run: python3 ios/check-quotes.sh
+
       - name: 选 Xcode 16
         run: sudo xcode-select -s /Applications/Xcode_16.1.app
       - name: 装 XcodeGen

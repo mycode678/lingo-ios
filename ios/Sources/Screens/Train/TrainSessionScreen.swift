@@ -49,6 +49,8 @@ final class TrainSessionModel: ObservableObject {
     func prepare() {
         guard let it = item else { return }
         startedAt = Date()
+        // 档位要**先读出来再定倍速**：反过来的话这一句放的是上一句的档位
+        if mode == .ladder { ladderLevel = svc.ladderLevel(it.id) }
         Task { @MainActor in
             if Demo.on {
                 try? await player.load(src: it.id)
@@ -57,7 +59,6 @@ final class TrainSessionModel: ObservableObject {
             }
             player.rate = mode == .ladder ? SpeedLadder.rates[ladderLevel] : 1.0
             player.segment = nil
-            if mode == .ladder { ladderLevel = svc.ladderLevel(it.id) }
         }
     }
 

@@ -26,7 +26,8 @@ final class UploadServer: ObservableObject {
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
-            let l = try NWListener(using: params, port: port)
+            // 参数名是 on: 不是 port:（写错了整串类型推断会跟着崩，报一堆莫名其妙的错）
+            let l = try NWListener(using: params, on: port)
             l.newConnectionHandler = { [weak self] c in
                 Task { @MainActor in self?.serve(c) }
             }

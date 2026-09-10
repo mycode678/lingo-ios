@@ -46,10 +46,14 @@ ios/Sources/
 ├── App/        LingoApp 入口 · AppEnv 依赖注入 · Demo 演示数据 · DBSelfTest 库自检屏
 ├── Engines/    全在本机算：Player 播放 · Aligner CTC 对齐(CoreML) · Speech 离线识别
 │               · Compare 逐词打分与诊断 · Recorder 录音 · VolumeKeys 音量键切句 · NowPlaying 锁屏
-├── Stores/     DB 本机 SQLite · Cache 音频缓存 · PackZip 解材料包 · Api 服务端(正在降级成可选)
+├── Stores/     DB 本机 SQLite · Cache 音频缓存 · PackZip 解材料包 · Api 服务端(已降级成可选)
+│               · Purchases StoreKit · UploadServer 电脑上传 · YouTube 字幕
 ├── Services/   PracticeService 进度排期 · CatalogService 材料包 · CoachService AI 拆解 · Store 全局状态
 │               · TrainKit 拆句(弱读/连读/重读/意群)+难度闸 · TrainModes 七个练法 · TrainService 取题记账
-├── Screens/    Today/ · Catalog/(材料库+查词) · Drill/(精听台+跟读结果+复习+随身) · Train/(七个练法) · Mine/
+│               · EntitlementService 会员额度 · RewardService 奖励 · ImportService 导入流水线
+│               · TutorialService 教程例句
+├── Screens/    Today/ · Catalog/(材料库+查词+导入) · Drill/(精听台+跟读结果+复习+随身)
+│               · Train/(七个练法) · Learn/(八课教程) · Video/(YouTube 词级跟随) · Mine/(含会员和海报)
 └── UI/         Theme 设计 token · WaveView 波形 · TextStyle · Audit 布局体检
 ```
 
@@ -79,6 +83,10 @@ ios/Sources/
 - D1 AI 拆解（`CoachService`，DeepSeek / OpenRouter）
 - D2 材料库：按身份挑、按难度挑、可预览
 - **D3 分级听力训练（七个练法）** —— 用户说的最大竞争力，见下面「七个练法」一节
+- D2a 用户导入：文件/iCloud/网盘（走系统文件选择器）、相册、电脑浏览器上传、播客 RSS
+- D4 会员 / 额度 / 奖励 / 分享海报（代码全在，StoreKit 商品要用户的账号去建）
+- D5 八课教程 + 配套练习（例子拿用户自己的材料现找，可点播）
+- D6 YouTube 词级跟随（靠自动字幕自带的词级时间戳，视频不碰）
 - D7 隐私政策 + 用户协议（仓库 `legal/`）
 
 ---
@@ -112,14 +120,14 @@ ios/Sources/
 
 ## 五、还没做的
 
-见 `TASKS.md` 里没打勾的。按当初讨论的轻重：
+见 `TASKS.md`。代码层面 A~D 都落地了，剩下的都是**要用户本人出面**的事：
 
-1. **D2a 用户导入的完整渠道** —— 本机/iCloud/浏览器上传/百度网盘/Google 云盘/播客
-2. **D4 会员 + 额度 + 奖励 + 分享海报** —— 连续包月/连续包年/买断三种
-3. **D5 教程 + 配套练习** —— 理论结合实际、拿真音频举例、可点击播放
-4. **D6 YouTube 词级跟随** —— 只做词级跟随界面，音视频在用户自己手机上；
-   要先研究「每日英语听力」怎么做的（参考截图在 **cd1 的 `~/cc-claude/doc/ting1/`**，
-   11 张 PNG；HANDOVER 早先写"在 191 上没找到"是找错机器了）
+1. **StoreKit 商品**：三档要在 App Store Connect 里建（要付费开发者账号）。
+   代码这边 `Purchases.PID` 里写死了三个 id，建的时候对上就行。
+2. **广告**：Google 广告在国内 iOS 能不能正常展示，用户说"先记下研究清楚之后再说"。
+   额度逻辑已经有了（`rewardForAd`），SDK 没接，入口由 `ads.enabled` 控制，默认关。
+3. **真机走一遍导入**：需要真实音频文件；模拟器上听写和对齐都不靠谱。
+4. **上架相关**：定价、软著、ICP。
 
 **待用户拍板的**：Google 广告在国内 iOS 能不能用、各档会员给多少额度、
 上架/定价/软著/ICP 的时间点。
@@ -234,6 +242,9 @@ mp3 本来压不动，sqlite 那点收益不值当 —— 传输时让 CDN 在�
 | 播放器回调捕获的是 View 的值拷贝，读开关拿到旧值 | 现取 `UserDefaults` |
 | 长按挂在 `Button` 上不触发（Button 吃手势） | 普通 View + `contentShape` + 手势 |
 | `/opt/dict` 的 git 里混进 1.3G 朗文词典源文件（有版权） | `.gitignore` 排掉，历史已重开 |
+| 中文里把「」打成 ASCII 的 `"`，Swift 字符串断成三段，报一堆 cannot find '某某' in scope | `ios/check-quotes.sh`，CI 里排在编译前面，几毫秒 |
+| Mac 试编译脚本读到的是**上一轮**的日志（传输中断、脚本压根没跑），把上一轮成功当成这一轮成功，带着编译错就推了 | 脚本开头 `: > ~/try.log` 先清空并写 START 行；没有 START 就是没跑 |
+| `cat x.tgz \| ssh mac 'tar xzf - && nohup 编译 &'` —— `&` 作用在整个 `&&` 列表上，ssh 立刻返回，传输和编译都可能没跑完 | 传输和触发分成两条命令，中间确认一次 |
 
 ---
 

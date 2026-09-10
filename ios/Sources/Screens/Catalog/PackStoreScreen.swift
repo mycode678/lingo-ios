@@ -17,6 +17,7 @@ struct PackStoreScreen: View {
     @State private var loading = true
     @State private var preview: CatalogService.RemoteItem?
     @State private var showImport = false
+    @State private var showVideo = false
 
     /// 身份。方案里他列的就是这几类人。
     private let whoList = ["入门", "日常口语", "出国", "雅思", "TED", "VOA"]
@@ -40,6 +41,13 @@ struct PackStoreScreen: View {
                         .padding(.vertical, 2)
                     }
                     .listRowInsets(EdgeInsets(top: 6, leading: T.side, bottom: 6, trailing: 0))
+                    // 自己的材料两条路：导进来（转成材料包）或者跟着视频读。
+                    // 放在最上面 —— 预置材料总有练完的一天，这两条是无限的。
+                    HStack(spacing: T.s2) {
+                        miniCard("导入自己的", "square.and.arrow.down") { showImport = true }
+                        miniCard("视频跟读", "play.rectangle") { showVideo = true }
+                    }
+                    .listRowInsets(EdgeInsets(top: 6, leading: T.side, bottom: 6, trailing: T.side))
                 } header: {
                     Text("你现在在学什么")
                 } footer: {
@@ -70,20 +78,30 @@ struct PackStoreScreen: View {
                     NavigationLink { DictScreen() } label: { Image(systemName: "character.book.closed") }
                         .accessibilityLabel("查词")
                 }
-                // 「导入自己的材料」是用户点名的一条大需求，不该藏在设置里
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showImport = true } label: { Image(systemName: "square.and.arrow.down") }
-                        .accessibilityLabel("导入")
-                        .accessibilityIdentifier("packs.import")
-                }
             }
             .refreshable { await load() }
             .task { await load() }
             .sheet(item: $preview) { previewSheet($0) }
+            .sheet(isPresented: $showVideo) { VideoFollowScreen { showVideo = false } }
             .sheet(isPresented: $showImport) {
                 ImportScreen { showImport = false; Task { await load() } }
             }
         }
+    }
+
+    private func miniCard(_ t: String, _ icon: String, _ go: @escaping () -> Void) -> some View {
+        Button(action: go) {
+            VStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: T.f4))
+                Text(t).font(.system(size: T.f2, weight: .medium))
+            }
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .background(Color.accentColor.opacity(0.10))
+            .foregroundStyle(Color.accentColor)
+            .clipShape(RoundedRectangle(cornerRadius: T.card, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("packs." + icon)
     }
 
     // MARK: 一行一个包

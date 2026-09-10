@@ -86,3 +86,58 @@ final class TrainUITests: XCTestCase {
                       "退不回训练首页：" + describe(app))
     }
 }
+
+/// 教程（D5）和视频跟读（D6）的入口与基本可用性。
+/// 这两块的算法部分在 LingoTests 里测；这里只管"点得进去、点得回来"。
+final class LearnUITests: XCTestCase {
+
+    private func launch(_ screen: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-screen", screen]
+        app.launch()
+        return app
+    }
+
+    override func setUp() {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// 八课一节不少，而且能点开
+    func testTutorialOpensAndHasAllLessons() {
+        let app = launch("train")
+        let entry = app.buttons["train.tutorial"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "训练页没有教程入口：" + describe(app))
+        entry.tap()
+        for id in ["beat", "weak", "link", "stop", "group", "why", "speak", "how"] {
+            let row = app.buttons["tutorial." + id]
+            // 后面几课要滑下去才看得见
+            if !row.exists { app.swipeUp() }
+            XCTAssertTrue(row.exists, "少了第 \(id) 课：" + describe(app))
+        }
+    }
+
+    /// 一课里该有的三样：正文、例子、配套练习
+    func testLessonHasPracticeButton() {
+        let app = launch("train")
+        XCTAssertTrue(app.buttons["train.tutorial"].waitForExistence(timeout: 10))
+        app.buttons["train.tutorial"].tap()
+        XCTAssertTrue(app.buttons["tutorial.beat"].waitForExistence(timeout: 5))
+        app.buttons["tutorial.beat"].tap()
+        let practice = app.buttons["lesson.practice"]
+        if !practice.exists { app.swipeUp() }
+        XCTAssertTrue(practice.waitForExistence(timeout: 5),
+                      "这一课末尾没有「练一下」——教程配套练习是用户点名要的：" + describe(app))
+    }
+
+    /// 材料页上「导入自己的」和「视频跟读」两个口都在，且视频那一屏能打开
+    func testMaterialsHasImportAndVideoEntries() {
+        let app = launch("dict")
+        let video = app.buttons["packs.play.rectangle"]
+        XCTAssertTrue(video.waitForExistence(timeout: 10), "材料页没有视频跟读入口：" + describe(app))
+        XCTAssertTrue(app.buttons["packs.square.and.arrow.down"].exists, "没有导入入口")
+        video.tap()
+        XCTAssertTrue(app.textFields["yt.link"].waitForExistence(timeout: 5),
+                      "视频跟读打不开：" + describe(app))
+    }
+}
