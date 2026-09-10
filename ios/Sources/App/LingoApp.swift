@@ -102,6 +102,11 @@ struct LingoApp: App {
                     UserDefaults.standard.set("test", forKey: "owner.key")   // 受限包也放行
                     _ = try? CatalogService.shared.install(zip: z)
                 }
+                // 装完还要**真的把它装进精听台** —— 那才是用户点「开始学」之后的状态。
+                // 只装不载的话，测试和诊断看到的还是演示数据，等于没测到真路。
+                if Demo.useTestPack, let p = CatalogService.shared.packs().first {
+                    store.loadPack(p.id, name: p.name)
+                }
                 EntitlementService.shared.markFirstRun()
                 EntitlementService.shared.reload()
                 Purchases.shared.start()
