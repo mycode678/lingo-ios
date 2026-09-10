@@ -5,7 +5,7 @@ import AVFoundation
 @MainActor
 final class Nav: ObservableObject {
     static let shared = Nav()
-    // 0 今日 1 材料 2 精听 3 我的
+    // 0 今日 1 材料 2 精听 3 训练 4 我的
     // 「今日」是首页：一进来就知道今天练什么，不用自己想。
     // 「材料」把查词、材料库、导入、视频、教程收在一起——它们都是"找东西练"。
     @Published var tab = 0
@@ -72,7 +72,10 @@ struct LingoApp: App {
                 // 查词挪到右上角 —— 它是朗文的内容，受版权限制，不该当门面。
                 PackStoreScreen().tabItem { Label("材料", systemImage: "books.vertical") }.tag(1)
                 DrillScreen().tabItem { Label("精听", systemImage: "waveform") }.tag(2)
-                LibScreen().tabItem { Label("我的", systemImage: "person") }.tag(3)
+                // 「训练」是这个 App 的核心竞争力（分级听力练习系统，别家没有），
+                // 所以给它一个一级入口，不藏在「今天」下面。
+                TrainHomeScreen().tabItem { Label("训练", systemImage: "figure.run") }.tag(3)
+                LibScreen().tabItem { Label("我的", systemImage: "person") }.tag(4)
             }
             .environmentObject(store)
             .environmentObject(player)
@@ -86,11 +89,15 @@ struct LingoApp: App {
                     switch Demo.screen {
                     case "drill":  nav.tab = 2
                     case "dict":   nav.tab = 1
-                    case "lib":    nav.tab = 3
+                    case "train":  nav.tab = 3
+                    case "lib":    nav.tab = 4
                     default:       nav.tab = 0
                     }
                     return
                 }
+                EntitlementService.shared.markFirstRun()
+                EntitlementService.shared.reload()
+                Purchases.shared.start()
                 await store.loadDueCount()
                 await store.loadHist()
             }

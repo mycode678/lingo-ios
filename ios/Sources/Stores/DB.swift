@@ -153,6 +153,38 @@ final class DB {
             sentences    INTEGER NOT NULL DEFAULT 0,
             restricted   INTEGER NOT NULL DEFAULT 0,
             installed_at REAL NOT NULL DEFAULT 0);
+        """,
+
+        // v4：分级听力训练（七个练法）的记账。
+        // 只记数字（做了几题、对了几题、花了多久），**不记用户打错的字** ——
+        // 那是学习隐私，留着也没用。
+        // 列名用 right_n / total_n：RIGHT 在新版 SQLite 里是关键字（RIGHT JOIN）。
+        """
+        CREATE TABLE IF NOT EXISTS train(
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind    TEXT NOT NULL,
+            sent_id TEXT NOT NULL,
+            at      REAL NOT NULL,
+            right_n INTEGER NOT NULL DEFAULT 0,
+            total_n INTEGER NOT NULL DEFAULT 0,
+            secs    REAL NOT NULL DEFAULT 0);
+        CREATE INDEX IF NOT EXISTS ix_train_at ON train(at);
+
+        -- 速度阶梯：每句卡在第几档。久了能看出"听力速度上限"在往上走。
+        CREATE TABLE IF NOT EXISTS ladder(
+            sent_id TEXT PRIMARY KEY,
+            level   INTEGER NOT NULL DEFAULT 0,
+            at      REAL NOT NULL DEFAULT 0);
+        """,
+
+        // v5：每天练了多少。
+        // 「今天」那一屏的连续天数和热力图以前是找服务器要的（`Api.heat`）——
+        // 断网就变成 0 天，把用户攒了两个月的连打卡记录显示成没练过，很伤人。
+        // d 是"第几天"（时间戳 / 86400，按本地时区算）。
+        """
+        CREATE TABLE IF NOT EXISTS day(
+            d INTEGER PRIMARY KEY,
+            n INTEGER NOT NULL DEFAULT 0);
         """
     ]
 

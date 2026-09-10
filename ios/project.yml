@@ -16,6 +16,13 @@ settings:
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.9"
+  configs:
+    # `@testable import Lingo` 要求宿主是"为测试编译"的。
+    # Xcode 自己建工程时 Debug 默认带这个，XcodeGen 不带 ——
+    # 不加的话单元测试直接报 module 'Lingo' was not compiled for testing。
+    debug:
+      ENABLE_TESTABILITY: YES
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
 targets:
   Lingo:
     type: application
@@ -55,6 +62,24 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
 
+  # 纯逻辑测试：七个练法的出题和判卷规则。**不开界面、几秒钟跑完**。
+  # 有它才敢改阈值——挖几个空、多长算弱读、难度线定在哪，改完跑一遍就知道有没有破。
+  LingoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Lingo
+    settings:
+      base:
+        PRODUCT_NAME: LingoTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingo.listen.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # 挂在 App 里跑：常用词表是 App 的资源，不挂宿主就读不到，
+        # 难度闸那几条会静默跳过（跳过的测试等于没测）。
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Lingo.app/Lingo"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
   # 真机式自测：模拟器里真的转屏、真的点、真的滑，断言"能不能点到""滚不滚得动"。
   # 静态截图看不出手势能不能用 —— 横屏控制条滚不动那种问题只有真滑一次才知道。
   LingoUITests:
@@ -79,9 +104,10 @@ schemes:
     build:
       targets:
         Lingo: all
+        LingoTests: [test]
         LingoUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
-      targets: [LingoUITests]
+      targets: [LingoTests, LingoUITests]

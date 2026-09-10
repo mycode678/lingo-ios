@@ -41,6 +41,20 @@ jobs:
             -sdk iphonesimulator -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO build
 
+      # ---- 纯逻辑测试：七个练法的出题和判卷。几秒钟跑完，放在最前面 ----
+      # 它不需要截图也不需要转屏，坏了就是规则本身坏了，没必要等十分钟的界面测试。
+      - name: 单元测试（练法逻辑）
+        working-directory: ios
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPhone 15 Pro Max (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
+          set -o pipefail
+          xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -only-testing:LingoTests \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee /tmp/unit.log \
+            | grep -E "Test Case|error:|\*\* TEST" | tail -40
+          grep -E "error:|Failing tests|crashed" /tmp/unit.log | sort -u | head -20 || true
+
       - name: 启动模拟器、逐屏截图
         working-directory: ios
         run: |
@@ -63,7 +77,7 @@ jobs:
             xcrun simctl terminate "$UDID" com.lingo.listen 2>/dev/null || true
           }
           # 同一台机器不反复重启，省一大半时间
-          for S in drill dict review lib; do
+          for S in drill dict review lib train; do
             shoot "iPhone 15 Pro Max" "$S" light
           done
           shoot "iPhone 15 Pro Max" "drill" dark

@@ -94,6 +94,17 @@ final class Player: ObservableObject {
         }
         let path = src                      // 下面 let src = f.processingFormat 会把参数挡住
         let url = try await Cache.shared.localURL(for: src)
+        try loadFile(url, tag: path)
+    }
+
+    /// 材料包里的音频是**本机文件**，不走缓存也不走网络。
+    /// 分级听力训练出的题就是从这儿放的 —— 装完包断网照练。
+    func load(local url: URL) throws {
+        if Demo.on { return }               // 演示数据由上面那条走合成波形
+        try loadFile(url, tag: url.path)
+    }
+
+    private func loadFile(_ url: URL, tag path: String) throws {
         let f = try AVAudioFile(forReading: url)
         let src = f.processingFormat
         guard let inBuf = AVAudioPCMBuffer(pcmFormat: src, frameCapacity: AVAudioFrameCount(f.length)) else {
@@ -197,6 +208,55 @@ final class Player: ObservableObject {
         isPlaying = true
         startTicker()
         NowPlaying.shared.update()
+    }
+
+    /// 「只听重读词」专用：一句话里分段给不同音量，重读的原样、其余压低。
+    ///
+    /// 为什么不用 mixer 的 volume 一段段调：那样要把一句切成十几次调度，
+    /// 每次切换都可能听见"咔"的一声，而且音量变化点跟词边界对不齐。
+    /// 直接在样本上乘系数最准，一次调度放完，边界处再做 8 毫秒淡入淡出防爆音。
+    func playDimmed(_ chunks: [(range: ClosedRange<Double>, volume: Float)]) {
+        guard let buf = buffer, let chIn = buf.floatChannelData,
+              let lo = chunks.first?.range.lowerBound,
+              let hi = chunks.last?.range.upperBound, hi > lo else { return }
+        let a = Int(lo * sampleRate)
+        let frames = AVAudioFrameCount(max(0, Int(hi * sampleRate) - a))
+        guard frames > 64, a >= 0, a + Int(frames) <= Int(buf.frameLength),
+              let seg = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: frames),
+              let chOut = seg.floatChannelData else { return }
+        seg.frameLength = frames
+        memcpy(chOut[0], chIn[0] + a, Int(frames) * MemoryLayout<Float>.size)
+
+        let fade = Int(0.008 * sampleRate)
+        for c in chunks {
+            let i0 = max(0, Int(c.range.lowerBound * sampleRate) - a)
+            let i1 = min(Int(frames), Int(c.range.upperBound * sampleRate) - a)
+            guard i1 > i0 else { continue }
+            for i in i0..<i1 {
+                // 段首段尾各滑 8 毫秒，避免音量突变的爆音
+                let d = min(i - i0, i1 - 1 - i)
+                let k = fade > 0 ? min(1, Float(d) / Float(fade)) : 1
+                chOut[0][i] *= c.volume + (1 - c.volume) * (1 - k)
+            }
+        }
+
+        gen += 1
+        let my = gen
+        node.stop()
+        if !engine.isRunning { try? engine.start() }
+        node.scheduleBuffer(seg, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, my == self.gen else { return }
+                self.isPlaying = false
+                self.stopTicker()
+                self.onSegmentEnd?()
+            }
+        }
+        startOffset = lo
+        startHostTime = CACurrentMediaTime()
+        node.play()
+        isPlaying = true
+        startTicker()
     }
 
     private func finished(range: ClosedRange<Double>) {
