@@ -63,6 +63,9 @@ enum Demo {
     /// 但这些动作最终都汇到同一处代码。后门就是从内部触发那处代码，
     /// 于是"按了之后会怎样"能自动验，不用人拿着手机配合。
     static var probe: Bool { on && ProcessInfo.processInfo.arguments.contains("-probe") }
+    /// -usepack：启动时把随包带的测试材料包装上（如果还没装）。
+    /// 有它才能在模拟器里跑通"装了包 → 在精听台练起来"这条**真实用户流程**。
+    static var useTestPack: Bool { on && ProcessInfo.processInfo.arguments.contains("-usepack") }
     /// -noplay：关掉"切到一句就自动播"。只给测试用 ——
     /// 有它才验得了"还没听就不该冒出打分行"。
     static var noAutoPlay: Bool { on && ProcessInfo.processInfo.arguments.contains("-noplay") }

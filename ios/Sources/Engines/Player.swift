@@ -100,7 +100,8 @@ final class Player: ObservableObject {
     /// 材料包里的音频是**本机文件**，不走缓存也不走网络。
     /// 分级听力训练出的题就是从这儿放的 —— 装完包断网照练。
     func load(local url: URL) throws {
-        if Demo.on { return }               // 演示数据由上面那条走合成波形
+        // 这儿原来有个 `if Demo.on { return }` —— 于是真材料包在 -demo 下没声音，
+        // 端到端测试根本跑不起来。真包就是真文件，跟 demo 与否无关。
         try loadFile(url, tag: url.path)
     }
 

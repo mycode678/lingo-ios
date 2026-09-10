@@ -131,6 +131,14 @@ final class DrillModel: ObservableObject {
         let saved = rememberSelection ? Self.savedSelection(s.src) : nil
         loading = true; note = ""
         selection = nil; words = []; marks = []; chunks = []
+        // **真包优先于演示数据**。这一句排在 Demo 前面是有代价换来的：
+        // 原来 Demo 分支在前，只要带 -demo 就全是假句子假波形，
+        // "装好的包能不能在精听台练起来"这条路一条测试都覆盖不到 ——
+        // 结果我这边闸门全绿，用户下完包却发现没地方练。
+        if let pid = s.packId {
+            await loadFromPack(s, pid, saved: saved)
+            return
+        }
         if Demo.on {
             try? await Player.shared.load(src: s.src)
             view = (0, Player.shared.duration)
@@ -145,12 +153,6 @@ final class DrillModel: ObservableObject {
                 Player.shared.setSegment(selection, playNow: false)
             }
             loading = false
-            return
-        }
-        // 材料包里的句子：音频是本机文件，词边界打包时就算好了 ——
-        // 一次网都不用联。（老的"查词 → 例句"那条路在下面，走服务器。）
-        if let pid = s.packId {
-            await loadFromPack(s, pid, saved: saved)
             return
         }
         do {

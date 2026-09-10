@@ -95,6 +95,13 @@ struct LingoApp: App {
                     }
                     return
                 }
+                // 测试要走"装了包 → 在精听台练起来"这条真实路，先把随包带的包装上
+                if Demo.useTestPack,
+                   CatalogService.shared.packs().isEmpty,
+                   let z = Bundle.main.url(forResource: "testpack", withExtension: "zip") {
+                    UserDefaults.standard.set("test", forKey: "owner.key")   // 受限包也放行
+                    _ = try? CatalogService.shared.install(zip: z)
+                }
                 EntitlementService.shared.markFirstRun()
                 EntitlementService.shared.reload()
                 Purchases.shared.start()
