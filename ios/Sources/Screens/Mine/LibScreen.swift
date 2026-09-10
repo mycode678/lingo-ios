@@ -264,7 +264,7 @@ struct SettingsScreen: View {
                     // 方案原话：「词典例句不开……当然我自己要可以用」。
                     // 真正的防线是那种包根本不往 CDN 上放，这里是第二道，
                     // 而且判断在 Service 入口，不是界面藏起来。
-                    SecureField("材料口令（没有就留空）", text: $ownerKey)
+                    SecureField("材料口令（要装朗文的包就得填）", text: $ownerKey)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                 } header: { Text("受限材料") } footer: {
                     Text(ownerKey.isEmpty ? "留空就是普通用户：带版权标记的材料包装不上。"

@@ -13,7 +13,14 @@ struct PackStoreScreen: View {
     @State private var remote: [CatalogService.RemoteItem] = []
     @State private var installed: [CatalogService.Pack] = []
     @State private var busy: String?                  // 正在下哪个包
+    /// 拉目录失败（整页替换成报错）
     @State private var err: String?
+    /// 下载某一个包失败（弹一下就行，**不能把整个列表顶掉**）。
+    /// 原来这两件事共用一个 err，于是"这个包有版权限制"被显示成
+    /// 标题写死的「拿不到材料目录」—— 真正的原因被盖住，人只能干瞪眼。
+    @State private var downErr: String?
+    /// 受限包要「材料口令」：是不是因为这个下不动
+    @State private var needOwnerKey = false
     @State private var loading = true
     @State private var preview: CatalogService.RemoteItem?
     @State private var showImport = false
@@ -91,6 +98,17 @@ struct PackStoreScreen: View {
             .sheet(isPresented: $showSettings, onDismiss: { Task { await load() } }) {
                 SettingsScreen()
             }
+            .alert("这个包要「材料口令」", isPresented: $needOwnerKey) {
+                Button("去填") { showSettings = true }
+                Button("算了", role: .cancel) { }
+            } message: {
+                Text("朗文词典的例句有版权，这几个包只对你自己开。\n"
+                     + "在「我的 → 齿轮 → 材料口令」里填上，就能装了。")
+            }
+            .alert("没下成", isPresented: Binding(
+                get: { downErr != nil }, set: { if !$0 { downErr = nil } })) {
+                Button("知道了", role: .cancel) { downErr = nil }
+            } message: { Text(downErr ?? "") }
             .sheet(isPresented: $showImport) {
                 ImportScreen { showImport = false; Task { await load() } }
             }
@@ -231,9 +249,14 @@ struct PackStoreScreen: View {
     }
 
     private func get(_ it: CatalogService.RemoteItem) async {
-        busy = it.id; err = nil
+        busy = it.id; downErr = nil
         do { _ = try await cat.download(it); installed = cat.packs() }
-        catch { err = error.localizedDescription }
+        catch {
+            // 受限包（朗文那几个）没填「材料口令」是最常见的一种，单独说清楚；
+            // 别的错误弹一下就行，**不许把整个列表顶掉**。
+            if case CatalogService.Err.restricted = error { needOwnerKey = true }
+            else { downErr = error.localizedDescription }
+        }
         busy = nil
     }
 }
