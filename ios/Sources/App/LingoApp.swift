@@ -85,6 +85,28 @@ struct LingoApp: App {
             .preferredColorScheme(scheme == "light" ? .light : (scheme == "dark" ? .dark : nil))
             .task {
                 if Demo.on {
+                    // 测试要走"装了包 → 在精听台练起来"这条真实路。
+                    // **必须在 look(Demo.word) 之前、return 之前** ——
+                    // 第一版我把它写在 return 后面，-demo 下根本执行不到，
+                    // 等于测试钩子是死的，还以为跑的是真包。
+                    if Demo.useTestPack {
+                        if CatalogService.shared.packs().isEmpty,
+                           let z = Bundle.main.url(forResource: "testpack", withExtension: "zip") {
+                            UserDefaults.standard.set("test", forKey: "owner.key")
+                            _ = try? CatalogService.shared.install(zip: z)
+                        }
+                        if let p = CatalogService.shared.packs().first {
+                            store.loadPack(p.id, name: p.name)
+                            switch Demo.screen {
+                            case "drill": nav.tab = 2
+                            case "train": nav.tab = 3
+                            case "lib":   nav.tab = 4
+                            case "dict":  nav.tab = 1
+                            default:      nav.tab = 0
+                            }
+                            return              // 真包已经装好，别再去载演示数据把它盖掉
+                        }
+                    }
                     await store.look(Demo.word)
                     switch Demo.screen {
                     case "drill":  nav.tab = 2
@@ -94,18 +116,6 @@ struct LingoApp: App {
                     default:       nav.tab = 0
                     }
                     return
-                }
-                // 测试要走"装了包 → 在精听台练起来"这条真实路，先把随包带的包装上
-                if Demo.useTestPack,
-                   CatalogService.shared.packs().isEmpty,
-                   let z = Bundle.main.url(forResource: "testpack", withExtension: "zip") {
-                    UserDefaults.standard.set("test", forKey: "owner.key")   // 受限包也放行
-                    _ = try? CatalogService.shared.install(zip: z)
-                }
-                // 装完还要**真的把它装进精听台** —— 那才是用户点「开始学」之后的状态。
-                // 只装不载的话，测试和诊断看到的还是演示数据，等于没测到真路。
-                if Demo.useTestPack, let p = CatalogService.shared.packs().first {
-                    store.loadPack(p.id, name: p.name)
                 }
                 EntitlementService.shared.markFirstRun()
                 EntitlementService.shared.reload()
