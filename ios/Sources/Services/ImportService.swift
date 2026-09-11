@@ -212,12 +212,31 @@ final class ImportService: ObservableObject {
 
     // MARK: 听写
 
+    /// 听写一块，并且**认不全就自己重来**。
+    ///
+    /// iOS 的本机识别器不稳定：同样一段十几秒的音频，隔一次就只认出开头一小截
+    /// （真机考卷上是 37 词 / 7 词 / 3 词 交替）。它不报错，只是安静地少给你几十个词，
+    /// 后面整段话就这么没了 —— 用户那边表现为"导进来的材料缺了一大半"。
+    ///
+    /// 所以这里拿"认到第几秒"跟这块的真实长度比，差得多就重来（最多三次，
+    /// 中间歇 0.7 秒让上一个识别任务彻底放手）。拿不到时间戳的机器上不为难它，直接收。
     private func transcribe(_ chunk: [Float]) async throws -> String {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("imp-\(UUID().uuidString).wav")
         try writeWav(chunk, to: tmp)
         defer { try? FileManager.default.removeItem(at: tmp) }
-        return try await Speech.shared.transcribe(tmp)
+        let dur = Double(chunk.count) / sr
+        var best = Speech.Heard(text: "", covered: -1)
+        for attempt in 1...3 {
+            let h = try await Speech.shared.transcribeDetailed(tmp)
+            if h.covered > best.covered { best = h }
+            // 认到的位置离这块的结尾不超过 2 秒就算认全了（结尾常是静音）
+            if h.covered <= 0 || h.covered >= dur - 2.0 { return h.text }
+            print("IMPORT 第 \(attempt) 次只认到 \(String(format: "%.1f", h.covered))"
+                  + "/\(String(format: "%.1f", dur)) 秒，重来")
+            try? await Task.sleep(nanoseconds: 700_000_000)
+        }
+        return best.text
     }
 
     /// 按**说话的停顿**分句 —— 断句的依据是声音，不是标点。

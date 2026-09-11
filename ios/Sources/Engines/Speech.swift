@@ -39,6 +39,41 @@ final class Speech {
         }
     }
 
+    /// 听写的结果：文字，外加**它到底认到了第几秒**。
+    /// 认到哪儿这件事很关键：实测同样一段 18 秒的音频，
+    /// 这个识别器隔一次就只认出开头一小截（37 词 / 7 词 / 3 词 交替出现），
+    /// 不看覆盖到哪儿，就只能眼睁睁把后面那些话丢掉。
+    struct Heard {
+        var text: String
+        var covered: Double        // 最后一个词结束在第几秒；拿不到就是 0
+    }
+
+    /// 把一段录音听写成文字，并告诉调用方认到了第几秒。
+    func transcribeDetailed(_ url: URL) async throws -> Heard {
+        guard await ask() else { throw Err.denied }
+        guard let rec = SFSpeechRecognizer(locale: Locale(identifier: "en-US")),
+              rec.isAvailable else { throw Err.unavailable }
+        let req = SFSpeechURLRecognitionRequest(url: url)
+        req.requiresOnDeviceRecognition = true
+        req.shouldReportPartialResults = false
+        req.taskHint = .dictation
+        if #available(iOS 16.0, *) { req.addsPunctuation = false }
+        return try await withCheckedThrowingContinuation { c in
+            var done = false
+            rec.recognitionTask(with: req) { result, error in
+                guard !done else { return }
+                if let error { done = true; c.resume(throwing: error); return }
+                guard let result, result.isFinal else { return }
+                done = true
+                let t = result.bestTranscription
+                let text = t.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+                let covered = t.segments.last.map { $0.timestamp + $0.duration } ?? 0
+                if text.isEmpty { c.resume(throwing: Err.empty) }
+                else { c.resume(returning: Heard(text: text, covered: covered)) }
+            }
+        }
+    }
+
     /// 把一段录音听写成文字。全程离线。
     func transcribe(_ url: URL) async throws -> String {
         guard await ask() else { throw Err.denied }
