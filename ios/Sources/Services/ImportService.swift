@@ -38,9 +38,12 @@ final class ImportService: ObservableObject {
         }
     }
 
-    /// 一次听写多长。SFSpeechRecognizer 对单次时长有限制，切块最稳；
-    /// 45 秒是实测下来又快又不容易被截断的长度。
-    private let chunkSeconds = 45.0
+    /// 一次听写多长。SFSpeechRecognizer 对单次时长有限制，切块最稳。
+    /// 原来写 45 秒，真机考卷上量出来**一块只认出前面一小截**（107 秒 225 个词
+    /// 只出来 70 多个）。20 秒是"认得全"和"别太碎"之间的折中。
+    private let chunkSeconds = 20.0
+    /// 下刀点允许在目标位置前后这么多秒里找最安静的地方 —— 免得切在词中间。
+    private let cutSearch = 2.5
     /// 对齐引擎吃 16k 单声道
     private let sr = 16000.0
 
@@ -89,13 +92,18 @@ final class ImportService: ObservableObject {
         var sentences: [(en: String, words: [Aligner.Word])] = []
         let total = Double(pcm.count) / sr
         var t = 0.0
+        var nth = 0
         while t < total {
-            let end = min(total, t + chunkSeconds)
+            nth += 1
+            let end = quietCut(pcm, target: min(total, t + chunkSeconds), total: total)
             let chunk = Array(pcm[Int(t * sr)..<Int(end * sr)])
-            progress?("听写第 \(Int(t / chunkSeconds) + 1) 段", 0.05 + 0.6 * (t / total))
+            progress?("听写第 \(nth) 段", 0.05 + 0.6 * (t / total))
 
             if let text = try? await transcribe(chunk), !text.isEmpty {
-                progress?("对齐第 \(Int(t / chunkSeconds) + 1) 段", 0.05 + 0.6 * (end / total))
+                // 每段认出多少词要打出来：掉词的时候一眼看得出是听写掉的还是对齐掉的
+                print("IMPORT 第 \(nth) 段 \(String(format: "%.1f", end - t)) 秒 → 听写 "
+                      + "\(text.split(separator: " ").count) 词")
+                progress?("对齐第 \(nth) 段", 0.05 + 0.6 * (end / total))
                 // **整块只对齐一次**，再按句子把词切开。
                 // 曾经是每句拿整块去对一次 —— 那一句会被摊到整整 45 秒上，
                 // 时间戳全错，切出来的音频跟文字对不上，整个导入就废了。
@@ -105,6 +113,7 @@ final class ImportService: ObservableObject {
                         Aligner.Word(text: $0.text, start: $0.start + t,
                                      end: $0.end + t, score: $0.score)
                     }
+                    print("IMPORT 第 \(nth) 段 → 对齐 \(words.count) 词，分成 \(group(words).count) 句")
                     sentences.append(contentsOf: group(words))
                 }
             }
@@ -135,6 +144,26 @@ final class ImportService: ObservableObject {
             }
         }
         return fixed
+    }
+
+    /// 在 target 附近找一处最安静的地方下刀。
+    /// 一刀切在词中间，那个词两边各剩半截，听写认不出、对齐也没法认领。
+    private func quietCut(_ pcm: [Float], target: Double, total: Double) -> Double {
+        guard target < total - 0.2 else { return total }
+        let lo = max(0.5, target - cutSearch), hi = min(total - 0.2, target + cutSearch)
+        guard hi > lo else { return target }
+        let win = Int(0.1 * sr)
+        var best = target, bestE = Double.greatestFiniteMagnitude
+        var x = lo
+        while x < hi {
+            let i = Int(x * sr)
+            guard i + win <= pcm.count else { break }
+            var e = 0.0
+            for k in i..<(i + win) { e += Double(pcm[k] * pcm[k]) }
+            if e < bestE { bestE = e; best = x + 0.05 }
+            x += 0.05
+        }
+        return best
     }
 
     // MARK: 解码
