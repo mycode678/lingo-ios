@@ -238,28 +238,46 @@ final class Aligner {
     /// 长音频：按 8 秒切段分别对齐再拼。
     /// 词怎么分到各段：先按时长比例粗分，段与段之间留 0.5 秒重叠，
     /// 拼接时以前一段的结果为准，避免边界处重复。
+    /// 长音频：8 秒一窗往前挪，**锚点由声音决定，不靠猜**。
+    ///
+    /// 老写法是按"这一窗占总时长的比例"估这窗该分几个词，再固定往前挪 7.5 秒。
+    /// 两头对不上：窗口按时间走、词按比例走，走着走着就脱节 ——
+    /// 真机考卷上量出来 225 个词只对出 71 个，剩下的**在循环结束时被整个扔掉**
+    /// （音频走完了、词还剩一大半）。切出来的句子自然就少了一半。
+    ///
+    /// 现在的规矩：
+    /// 1. 每一窗把**剩下的词（最多 40 个，8 秒最多也就装三十来个）**整个喂给 DP；
+    ///    装不下的会被挤在窗口尾巴上，所以
+    /// 2. 只认"结束时间离窗尾还有 0.8 秒以上"的词，尾巴上那些不算数；
+    /// 3. 下一窗**从最后一个认下的词的结尾接着开始**（不是固定挪 7.5 秒）。
+    /// 这样窗口和词永远同步推进，一个词都不会掉队。
     private func alignLong(pcm: [Float], words: [String]) async throws -> [Word] {
-        let step = inputLen - Int(0.5 * sampleRate)
+        let margin = 0.8                       // 窗尾这 0.8 秒里的词交给下一窗
+        let maxPerWindow = 40
         var out: [Word] = []
         var wordIdx = 0
         var pos = 0
-        while pos < pcm.count, wordIdx < words.count {
+        while wordIdx < words.count {
             let end = min(pos + inputLen, pcm.count)
+            guard end - pos > 800 else { break }
             let chunk = Array(pcm[pos..<end])
-            // 这一段大概能装多少词：按"整句词数 × 这段占总时长的比例"估，多给 30% 余量
-            let frac = Double(end - pos) / Double(pcm.count)
-            let take = min(words.count - wordIdx,
-                           max(1, Int(Double(words.count) * frac * 1.3)))
+            let take = min(words.count - wordIdx, maxPerWindow)
             let sub = Array(words[wordIdx..<(wordIdx + take)])
             let logits = try infer(chunk)
             let got = try dp(logits: logits, frames: logits.count / labels.count,
                              words: sub, audioLen: chunk.count,
                              offset: Double(pos) / sampleRate)
-            // 落在重叠区里的最后一两个词丢掉，交给下一段（那儿的上下文更全）
-            let keep = (end >= pcm.count) ? got.count : max(1, got.count - 1)
+            let isLast = end >= pcm.count
+            let cutoff = Double(pos) / sampleRate + Double(end - pos) / sampleRate - margin
+            var keep = isLast ? got.count : got.prefix { $0.end <= cutoff }.count
+            keep = max(1, min(keep, got.count))          // 一个都不认就会原地打转
             out.append(contentsOf: got.prefix(keep))
             wordIdx += keep
-            pos += step
+            if isLast { break }
+            // 从最后一个认下的词的结尾接着走（留 50 毫秒，别把那个词的尾音切掉）
+            let nextT = max(0, out[out.count - 1].end - 0.05)
+            let nextPos = Int(nextT * sampleRate)
+            pos = max(pos + Int(0.5 * sampleRate), nextPos)   // 至少前进 0.5 秒，防死循环
         }
         return out
     }
