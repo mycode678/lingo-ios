@@ -51,7 +51,23 @@ struct ImportBenchView: View {
         print("BENCH-BEGIN")
         defer { print("BENCH-END") }
         let cat = CatalogService.shared
-        guard let pack = cat.packs().first else {
+        // 考卷必须是**真人语音**：随包那 12 句是自己合成的（频谱只有一串谐波、
+        // 3k 以上几乎没能量），Apple 的识别器直接回"没听到人说话"，量出来的 100%
+        // 错误率毫无意义。真考卷 benchpack.zip 不进仓库（见 .gitignore），
+        // 由 Mac 上的 agent 脚本在编译前拷进 Resources。
+        //
+        // **装包必须在这一屏里做**：App 那段装包代码挂在主界面的 .task 上，
+        // 而基准模式根本不渲染主界面 —— 栽过一次，跑三轮量的都是那 12 句合成音。
+        if let z = Bundle.main.url(forResource: "benchpack", withExtension: "zip") {
+            UserDefaults.standard.set("test", forKey: "owner.key")
+            if cat.packs().first(where: { $0.id == "bench" }) == nil {
+                for p in cat.packs() { cat.remove(p.id) }
+                do { _ = try cat.install(zip: z) } catch { log("装考卷失败：\(error)") }
+            }
+        } else {
+            log("⚠️ 包里没有 benchpack.zip —— 量的是合成音，数字不作数")
+        }
+        guard let pack = cat.packs().first(where: { $0.id == "bench" }) ?? cat.packs().first else {
             summary = "没有装材料包"; verdict = "不通过：没素材"; print("BENCH 没有材料包"); return
         }
         let sents = cat.sentences(pack.id, limit: 200)
