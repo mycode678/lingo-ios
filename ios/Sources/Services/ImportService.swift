@@ -99,6 +99,7 @@ final class ImportService: ObservableObject {
             let chunk = Array(pcm[Int(t * sr)..<Int(end * sr)])
             progress?("听写第 \(nth) 段", 0.05 + 0.6 * (t / total))
 
+            if nth > 1 { try? await Task.sleep(nanoseconds: 400_000_000) }
             if let text = try? await transcribe(chunk), !text.isEmpty {
                 // 每段认出多少词要打出来：掉词的时候一眼看得出是听写掉的还是对齐掉的
                 print("IMPORT 第 \(nth) 段 \(String(format: "%.1f", end - t)) 秒 → 听写 "
@@ -144,6 +145,25 @@ final class ImportService: ObservableObject {
             }
         }
         return fixed
+    }
+
+    /// 这段音频里有多少秒是"真的有人在说话"（20 毫秒一帧，按能量卡门槛）。
+    /// 用来判断听写有没有认全：认出来的词数明显配不上说话的时长，就是漏了。
+    private func voicedSeconds(_ pcm: [Float]) -> Double {
+        let win = Int(0.02 * sr)
+        guard pcm.count > win * 5 else { return 0 }
+        var e: [Double] = []
+        var i = 0
+        while i + win <= pcm.count {
+            var v = 0.0
+            for k in i..<(i + win) { v += Double(pcm[k] * pcm[k]) }
+            e.append((v / Double(win)).squareRoot())
+            i += win
+        }
+        let peak = e.max() ?? 0
+        guard peak > 0 else { return 0 }
+        let th = peak * 0.06
+        return Double(e.filter { $0 > th }.count) * 0.02
     }
 
     /// 在 target 附近找一处最安静的地方下刀。
@@ -225,18 +245,23 @@ final class ImportService: ObservableObject {
             .appendingPathComponent("imp-\(UUID().uuidString).wav")
         try writeWav(chunk, to: tmp)
         defer { try? FileManager.default.removeItem(at: tmp) }
-        let dur = Double(chunk.count) / sr
-        var best = Speech.Heard(text: "", covered: -1)
+        // 这块里有多少秒是真的有人在说话 —— 判"认全了没有"的尺子。
+        // 不用 Apple 给的时间戳：真机上它要么是 0、要么贴着音频结尾，判不出来。
+        let voiced = voicedSeconds(chunk)
+        // 英语朗读大概每秒 2.5~3 个词，按 1.2 个词/秒 卡（留足余量，宁可少重来）
+        let least = Int(voiced * 1.2)
+        var best = ""
+        var bestN = -1
         for attempt in 1...3 {
             let h = try await Speech.shared.transcribeDetailed(tmp)
-            if h.covered > best.covered { best = h }
-            // 认到的位置离这块的结尾不超过 2 秒就算认全了（结尾常是静音）
-            if h.covered <= 0 || h.covered >= dur - 2.0 { return h.text }
-            print("IMPORT 第 \(attempt) 次只认到 \(String(format: "%.1f", h.covered))"
-                  + "/\(String(format: "%.1f", dur)) 秒，重来")
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            let n = h.text.split(separator: " ").count
+            if n > bestN { bestN = n; best = h.text }
+            if n >= least { return h.text }
+            print("IMPORT 第 \(attempt) 次只认出 \(n) 词（有人说话 "
+                  + "\(String(format: "%.1f", voiced)) 秒，至少该有 \(least) 词），重来")
+            try? await Task.sleep(nanoseconds: 900_000_000)
         }
-        return best.text
+        return best
     }
 
     /// 按**说话的停顿**分句 —— 断句的依据是声音，不是标点。
