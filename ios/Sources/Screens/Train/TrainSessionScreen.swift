@@ -173,11 +173,21 @@ struct TrainSessionScreen: View {
                     // 值来得比首次渲染晚，用的还是初值，云端截图上题面照旧缩在顶上。
                     // 直接用 GeometryReader 包住内容区，minHeight 就是它自己的高度，
                     // 一次成型，不依赖任何"稍后才知道"的状态。
+                    //
+                    // 正中偏上：题面在整屏正中显得"孤零零悬着"（他看了截图提的）。
+                    // 做法是只拿上面 78% 的高度去居中，余下 22% 垫在底下 ——
+                    // 上空白 : 下空白 ≈ 4 : 6，重心抬起来，眼睛先落在题面上。
+                    // 题面比这段高时 minHeight 不会压着它，照旧往下长、照旧能滚。
                     GeometryReader { g in
                         ScrollView {
-                            question.padding(T.side)
-                                .frame(maxWidth: .infinity, minHeight: g.size.height,
-                                       alignment: .center)
+                            VStack(spacing: 0) {
+                                question.padding(T.side)
+                                    .frame(maxWidth: .infinity,
+                                           minHeight: g.size.height * 0.78,
+                                           alignment: .center)
+                                Spacer(minLength: 0)
+                            }
+                            .frame(minHeight: g.size.height, alignment: .top)
                         }
                     }
                     controls                     // 高频动作钉在最下面（拇指区）
