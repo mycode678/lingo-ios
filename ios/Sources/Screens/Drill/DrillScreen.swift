@@ -581,10 +581,16 @@ struct DrillScreen: View {
         let room: CGFloat = max(180, geo.size.height - 36 - cardHeight - swipeRoom)
         // 260 是**按 iPhone 11 Pro Max 那块屏定出来的**，占屏高 28%。
         // 写死一个点数，到 iPad 12.9（屏高 1366）上就只剩 19%，波形细成一条线，
-        // 下面还空掉一大片 —— 所以改成按屏高的 28% 走，小屏给个 220 的地板
+        // 下面还空掉一大片 —— 所以改成按屏高的比例走，小屏给个 220 的地板
         // （SE 那种屏按比例只有 187，圈半秒不够使）。
-        // 各机型算出来：SE 220 / 15 Pro Max 261（跟以前一样）/ iPad 12.9 382。
-        let waveMax: CGFloat = min(max(220, geo.size.height * 0.28), room)
+        //
+        // 手机 28%，平板 42%：他嫌"太高"是嫌**占屏比例**大（说过两次），
+        // 而平板上按 28% 算，波形下面会空掉整整三分之一屏 —— 真机截图一眼看得出
+        // "下面塌了一块"。平板那块地本来就富余，给波形最划算：圈半秒更好圈。
+        // 各机型算出来：SE 220 / 15 Pro Max 261（跟以前一样）/ iPad 12.9 约 540。
+        let wide = min(geo.size.width, geo.size.height) >= 700      // iPad
+        let ratio: CGFloat = wide ? 0.42 : 0.28
+        let waveMax: CGFloat = min(max(220, geo.size.height * ratio), room)
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
