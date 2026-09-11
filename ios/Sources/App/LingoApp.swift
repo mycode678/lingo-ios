@@ -64,18 +64,21 @@ struct LingoApp: App {
         }
     }
 
+    // 每个标签都挂了 `tab.<名字>` 的 identifier：iPad 上标签栏是顶部浮动条，
+    // 测试按 tabBars 找不到；按名字找又会撞上屏幕里同名的按钮（「材料」就撞了）。
+    // 认 identifier 是唯一在 iPhone / iPad 上都稳的办法，别删。
     private var root: some View {
             TabView(selection: $nav.tab) {
-                TodayScreen().tabItem { Label("今天", systemImage: "sun.max") }
+                TodayScreen().tabItem { Label("今天", systemImage: "sun.max").accessibilityIdentifier("tab.今天") }
                     .badge(store.dueCount).tag(0)
                 // 「材料」现在是材料库（按身份挑、按难度挑、可预览）。
                 // 查词挪到右上角 —— 它是朗文的内容，受版权限制，不该当门面。
-                PackStoreScreen().tabItem { Label("材料", systemImage: "books.vertical") }.tag(1)
-                DrillScreen().tabItem { Label("精听", systemImage: "waveform") }.tag(2)
+                PackStoreScreen().tabItem { Label("材料", systemImage: "books.vertical").accessibilityIdentifier("tab.材料") }.tag(1)
+                DrillScreen().tabItem { Label("精听", systemImage: "waveform").accessibilityIdentifier("tab.精听") }.tag(2)
                 // 「训练」是这个 App 的核心竞争力（分级听力练习系统，别家没有），
                 // 所以给它一个一级入口，不藏在「今天」下面。
-                TrainHomeScreen().tabItem { Label("训练", systemImage: "figure.run") }.tag(3)
-                LibScreen().tabItem { Label("我的", systemImage: "person") }.tag(4)
+                TrainHomeScreen().tabItem { Label("训练", systemImage: "figure.run").accessibilityIdentifier("tab.训练") }.tag(3)
+                LibScreen().tabItem { Label("我的", systemImage: "person").accessibilityIdentifier("tab.我的") }.tag(4)
             }
             .environmentObject(store)
             .environmentObject(player)

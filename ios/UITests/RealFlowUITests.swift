@@ -34,8 +34,7 @@ final class RealFlowUITests: XCTestCase {
     /// 浮动胶囊，XCUI 里根本没有 TabBar 这个容器，整条测试会挂在"找不到标签「材料」"。
     /// 所以先按 TabBar 找（iPhone），找不到就退回"整屏里叫这个名字的按钮"。
     private func tab(_ name: String) {
-        var t = app.tabBars.buttons[name]
-        if !t.waitForExistence(timeout: 5) { t = app.buttons[name] }
+        let t = Tabs.find(app, name)
         XCTAssertTrue(t.waitForExistence(timeout: 20), "找不到标签「\(name)」")
         t.tap()
         sleep(2)
