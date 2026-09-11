@@ -17,7 +17,9 @@ concurrency:
 jobs:
   shots:
     runs-on: macos-14
-    timeout-minutes: 40
+    # 加到 60：机型矩阵铺开（4 台模拟器 × 截图 + 8 组体检 + iPhone/iPad 两轮交互测试）
+    # 之后，40 分钟不够 —— 上一轮就是截图截到一半被掐断，整轮判成 cancelled。
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -101,10 +103,11 @@ jobs:
           # iPad：2026-09-11 起 iPad 是正式支持的机型（他的原话：以后这个 app
           # 要支持 iphone 和 ipad，要适配所有苹果的 iphone 和 ipad）。
           # 大屏跟手机是两种排版，不截就等于没人看。
-          for D in "iPad Pro 13-inch (M4)" "iPad mini (A17 Pro)"; do
-            shoot "$D" "drill" light
-            shoot "$D" "drill" light "-land"
-          done
+          shoot "iPad Pro 13-inch (M4)" "drill" light
+          shoot "iPad Pro 13-inch (M4)" "drill" light "-land"
+          shoot "iPad mini (A17 Pro)" "drill" light
+          # iPad mini 的横屏不另截：布局体检那一步已经量了它的横屏坐标，
+          # 每多开一台模拟器就多一两分钟，截图预算要花在看得出差别的地方
           shoot "iPad Pro 13-inch (M4)" "drill" dark
           shoot "iPad Pro 13-inch (M4)" "train" light "-usepack -mode blank"
           # 抽屉里的三块也截下来：句子列表（筛选行要钉在顶上）、间隔面板、改倍速面板
