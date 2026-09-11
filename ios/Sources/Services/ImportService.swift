@@ -64,19 +64,38 @@ final class ImportService: ObservableObject {
         let pcm = try await decode16k(src)
         guard pcm.count > Int(sr * 3) else { throw Err.tooShort }
 
-        // 一块一块地听写＋对齐：长音频一次性喂进去，内存和时间都吃不消，
-        // 而且中间失败一次就全白干。
+        let sentences = try await analyze(pcm: pcm) { [weak self] text, frac in
+            self?.step = Step(text: text, fraction: frac)
+        }
+        guard !sentences.isEmpty else { throw Err.transcribeFailed }
+
+        step = Step(text: "切音频", fraction: 0.7)
+        let pack = try build(title: title, pcm: pcm, sentences: sentences, catalog: catalog)
+        ent.consume(.importFile)
+        step = Step(text: "完成", fraction: 1)
+        return pack
+    }
+
+    // MARK: 听写 + 对齐（导入和精度基准共用这一段）
+
+    /// 一块一块地听写＋对齐：长音频一次性喂进去，内存和时间都吃不消，
+    /// 而且中间失败一次就全白干。
+    ///
+    /// **基准测试（-importbench）走的就是这个函数**，不是另写一份"差不多的"实现 ——
+    /// 量出来的准确率才代表用户真导入时的准确率。
+    func analyze(pcm: [Float],
+                 progress: ((String, Double) -> Void)? = nil)
+        async throws -> [(en: String, words: [Aligner.Word])] {
         var sentences: [(en: String, words: [Aligner.Word])] = []
         let total = Double(pcm.count) / sr
         var t = 0.0
         while t < total {
             let end = min(total, t + chunkSeconds)
             let chunk = Array(pcm[Int(t * sr)..<Int(end * sr)])
-            step = Step(text: "听写第 \(Int(t / chunkSeconds) + 1) 段", fraction: 0.05 + 0.6 * (t / total))
+            progress?("听写第 \(Int(t / chunkSeconds) + 1) 段", 0.05 + 0.6 * (t / total))
 
             if let text = try? await transcribe(chunk), !text.isEmpty {
-                step = Step(text: "对齐第 \(Int(t / chunkSeconds) + 1) 段",
-                            fraction: 0.05 + 0.6 * (end / total))
+                progress?("对齐第 \(Int(t / chunkSeconds) + 1) 段", 0.05 + 0.6 * (end / total))
                 // **整块只对齐一次**，再按句子把词切开。
                 // 曾经是每句拿整块去对一次 —— 那一句会被摊到整整 45 秒上，
                 // 时间戳全错，切出来的音频跟文字对不上，整个导入就废了。
@@ -99,20 +118,14 @@ final class ImportService: ObservableObject {
             }
             t = end
         }
-        guard !sentences.isEmpty else { throw Err.transcribeFailed }
-
-        step = Step(text: "切音频", fraction: 0.7)
-        let pack = try build(title: title, pcm: pcm, sentences: sentences, catalog: catalog)
-        ent.consume(.importFile)
-        step = Step(text: "完成", fraction: 1)
-        return pack
+        return sentences
     }
 
     // MARK: 解码
 
     /// 任何格式（mp3/m4a/wav/mp4/mov…）都先统一成 16k 单声道浮点。
     /// 视频也走这条路 —— `AVAssetReader` 只挑音轨，不碰画面。
-    private func decode16k(_ url: URL) async throws -> [Float] {
+    func decode16k(_ url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
             throw Err.noAudio

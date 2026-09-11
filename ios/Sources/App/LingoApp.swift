@@ -52,6 +52,10 @@ struct LingoApp: App {
             DBSelfTest()
         } else if Demo.alignBench {
             if #available(iOS 17.0, *) { AlignBenchView() } else { Text("需要 iOS 17") }
+        } else if Demo.importBench {
+            // 「用户上传一段没有字幕的音频，出来的文本和词边界准不准」——
+            // 这一屏跑考卷、出两个数（见 ImportBench.swift）
+            if #available(iOS 17.0, *) { ImportBenchView() } else { Text("需要 iOS 17") }
         } else if Demo.land {
             GeometryReader { g in                 // 截横屏专用：按横屏尺寸渲染再转 90 度
                 root

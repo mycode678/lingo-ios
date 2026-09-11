@@ -58,6 +58,9 @@ enum Demo {
     static var land: Bool { ProcessInfo.processInfo.arguments.contains("-land") }
     /// -alignbench：跑手机端对齐的验证屏（跟服务器的结果比对）
     static var alignBench: Bool { on && ProcessInfo.processInfo.arguments.contains("-alignbench") }
+    /// -importbench：跑"用户上传音频"的导入精度基准（文本错误率 + 词边界误差）。
+    /// 要跟 -usepack 一起用 —— 考卷就是随包那个测试材料包。
+    static var importBench: Bool { on && ProcessInfo.processInfo.arguments.contains("-importbench") }
     /// -probe：打开测试后门（只在 -demo 下有效）。
     /// 真机上没法用代码按物理音量键、也没法替 AirPods 点两下，
     /// 但这些动作最终都汇到同一处代码。后门就是从内部触发那处代码，
