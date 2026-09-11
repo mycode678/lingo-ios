@@ -289,6 +289,13 @@ ssh mac "echo <完整sha> > ~/lingo-want; echo LingoUITests/RealFlowUITests > ~/
 截图落在 `mac:~/lingo-png/`，拉回来：
 `ssh mac "cd ~/lingo-png && tar cf - ." | tar xf - -C .`
 
+**挑哪台真机**（2026-09-11 加）：默认 iPhone 11 Pro Max；这一轮想跑 iPad Pro 12.9 就
+`echo iPad > ~/lingo-dev`（一次性，`lingo-agent.sh` 读完就删）。iPad 第一次接要做四件事：
+直插 Mac 的 USB-C 数据线 → `xcrun devicectl manage pair` 配对 → iPad 上开**开发者模式**
+（这项配对后才出现）并重启 → Xcode Settings → Accounts 登着 Apple ID（否则新设备进不了
+签名档，报 `No Accounts`），装完在 iPad 上「VPN 与设备管理」里信任开发者。
+iPad 上 `RealFlowUITests` 会红：iPadOS 26 的标签栏是顶部浮动条，不是 TabBar 元素。
+
 坑：`~/lingo-only` 只跑一个测试类（整套要好几分钟）；手机状态必须是
 **connected**（锁屏时会变 available (paired)，测试进程 exit 74 起不来 ——
 iOS 26 升级后"自动锁定：永不"会被重置，要重新设）；
