@@ -118,7 +118,31 @@ final class ImportService: ObservableObject {
             }
             t = end
         }
-        return sentences
+        // ---- 精修：每句拿**自己那一小段**音频重对一次 ----
+        //
+        // 上面那一遍是按 45 秒一块对的，长段里只要跨过一处静音，后面就整体漂。
+        // 实测（网页端同一个毛病，新概念 2 第一句）：整段对齐把 First 放在 4.12–4.77，
+        // 而这个词真实位置是 4.70–5.00 —— 差半秒，点"First"播出来是前面那段静音。
+        // 拿这一句单独重对一次，结果跟按能量量出来的真实边界差几十毫秒。
+        //
+        // 代价很小：一句两三秒，对齐模型输入本来就是 8 秒一窗。
+        var fixed: [(en: String, words: [Aligner.Word])] = []
+        for sent in sentences {
+            guard let first = sent.words.first, let last = sent.words.last else { continue }
+            let a = max(0, first.start - 0.15), b = min(Double(pcm.count) / sr, last.end + 0.20)
+            let i0 = Int(a * sr), i1 = min(pcm.count, Int(b * sr))
+            guard i1 - i0 > Int(sr * 0.3) else { fixed.append(sent); continue }
+            let clip = Array(pcm[i0..<i1])
+            if let re = try? await Aligner.shared.align(pcm: clip, text: sent.en),
+               re.count >= max(1, sent.en.split(separator: " ").count * 2 / 3) {
+                fixed.append((sent.en, re.map {
+                    Aligner.Word(text: $0.text, start: $0.start + a, end: $0.end + a, score: $0.score)
+                }))
+            } else {
+                fixed.append(sent)      // 重对失败就保留粗对的，总比没有强
+            }
+        }
+        return fixed
     }
 
     // MARK: 解码

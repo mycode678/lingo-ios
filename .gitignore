@@ -8,3 +8,8 @@ ios/Generated/
 # 对齐模型 181M，超过 GitHub 单文件上限，不进仓库。
 # Mac 上放在 ~/lingo-models/，构建时由 agent 脚本软链进来。
 models/
+
+# 精度考卷（朗文真人音频 40 句 + 服务器对齐好的词级时间）。
+# 只用来量"用户上传音频后文本和波形准不准"，是版权内容，不进仓库、不进上架包。
+# Mac 上放在 ~/lingo-benchpack.zip，跑基准时由 agent 脚本拷进 ios/Resources/。
+ios/Resources/benchpack.zip

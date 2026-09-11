@@ -102,6 +102,16 @@ struct LingoApp: App {
                         // 云端栽过：pack 表里有行、pack.sqlite 却读不出内容，
                         // 于是"已经有包了"就跳过安装，精听台空屏、练法说没材料，
                         // 两边症状还互相矛盾，查了半天。按能不能用来判就自愈了。
+                        // 精度基准要用**真人语音**当考卷：随包那 12 句是自己合成的
+                        // （频谱只有一串谐波、3k 以上几乎没能量），Apple 的识别器
+                        // 直接回"没听到人说话"，拿它量识别准确率等于白量。
+                        // 考卷包（ios/Resources/benchpack.zip）不进仓库，见 .gitignore。
+                        if Demo.importBench,
+                           let z = Bundle.main.url(forResource: "benchpack", withExtension: "zip") {
+                            UserDefaults.standard.set("test", forKey: "owner.key")
+                            for p in cat.packs() { cat.remove(p.id) }
+                            _ = try? cat.install(zip: z)
+                        }
                         let usable = cat.packs().first { !cat.sentences($0.id, limit: 1).isEmpty }
                         if usable == nil,
                            let z = Bundle.main.url(forResource: "testpack", withExtension: "zip") {
