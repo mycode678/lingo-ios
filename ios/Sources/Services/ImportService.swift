@@ -44,6 +44,10 @@ final class ImportService: ObservableObject {
     private let chunkSeconds = 20.0
     /// 下刀点允许在目标位置前后这么多秒里找最安静的地方 —— 免得切在词中间。
     private let cutSearch = 2.5
+    /// 一段听写多长：攒够这么多秒就在下一处静音下刀
+    private let batchTarget = 8.0
+    /// 单段上限（有人一口气说很久时也得切）
+    private let batchMax = 14.0
     /// 对齐引擎吃 16k 单声道
     private let sr = 16000.0
 
@@ -91,16 +95,41 @@ final class ImportService: ObservableObject {
         async throws -> [(en: String, words: [Aligner.Word])] {
         var sentences: [(en: String, words: [Aligner.Word])] = []
         let total = Double(pcm.count) / sr
-        var t = 0.0
+        // 先按"人什么时候在说话"把音频切成一段一段，再一段一段听写。
+        //
+        // 以前是按固定秒数硬切（45 秒、后来 20 秒），有两个毛病：
+        // 1. iOS 的听写器碰到块里有长停顿就**到那儿收工**，后面的话一个字都不给，
+        //    而且是确定性的 —— 同一块重来三次，三次都只认出前面那 7 个词；
+        // 2. 块一长，对齐就得走多窗拼接那条路，误差也跟着上来。
+        // 按停顿切成 8 秒上下的小段，两个毛病一起没了：每段就一两句话，
+        // 听写器不会中途收工，对齐也正好落在单窗（模型输入就是 8 秒）里。
+        let parts = speechBatches(pcm, total: total)
         var nth = 0
-        while t < total {
+        for (t, end) in parts {
             nth += 1
-            let end = quietCut(pcm, target: min(total, t + chunkSeconds), total: total)
-            let chunk = Array(pcm[Int(t * sr)..<Int(end * sr)])
-            progress?("听写第 \(nth) 段", 0.05 + 0.6 * (t / total))
+            let chunk = Array(pcm[Int(t * sr)..<min(pcm.count, Int(end * sr))])
+            progress?("听写第 \(nth)/\(parts.count) 段", 0.05 + 0.6 * (t / total))
 
-            if nth > 1 { try? await Task.sleep(nanoseconds: 400_000_000) }
-            if let text = try? await transcribe(chunk), !text.isEmpty {
+            if nth > 1 { try? await Task.sleep(nanoseconds: 300_000_000) }
+            var heard: (text: String, enough: Bool) = (try? await transcribe(chunk)) ?? ("", true)
+            // 重来三次还是认不全，就把这一段**从中间最长的静音处劈成两半**分别听。
+            // 实测有的段落是"确定性地"只认出开头几个词（同一段重来三次，三次都一样），
+            // 换个切法它就肯认了 —— 剩下那 13 个漏词全是这么来的。
+            if !heard.enough, let mid = bestSilence(pcm, from: t, to: end) {
+                print("IMPORT 第 \(nth) 段认不全，从 \(String(format: "%.1f", mid)) 秒劈开重听")
+                var textA = "", textB = ""
+                let a = Array(pcm[Int(t * sr)..<min(pcm.count, Int(mid * sr))])
+                let b = Array(pcm[Int(mid * sr)..<min(pcm.count, Int(end * sr))])
+                if let ra = try? await transcribe(a) { textA = ra.text }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                if let rb = try? await transcribe(b) { textB = rb.text }
+                let joined = (textA + " " + textB).trimmingCharacters(in: .whitespaces)
+                if joined.split(separator: " ").count > heard.text.split(separator: " ").count {
+                    heard = (joined, true)
+                }
+            }
+            let text = heard.text
+            if !text.isEmpty {
                 // 每段认出多少词要打出来：掉词的时候一眼看得出是听写掉的还是对齐掉的
                 print("IMPORT 第 \(nth) 段 \(String(format: "%.1f", end - t)) 秒 → 听写 "
                       + "\(text.split(separator: " ").count) 词")
@@ -118,7 +147,6 @@ final class ImportService: ObservableObject {
                     sentences.append(contentsOf: group(words))
                 }
             }
-            t = end
         }
         // ---- 精修：每句拿**自己那一小段**音频重对一次 ----
         //
@@ -145,6 +173,96 @@ final class ImportService: ObservableObject {
             }
         }
         return fixed
+    }
+
+    /// 这一段里最长的那处静音在第几秒（两头各留 1.5 秒，别劈出个没用的碎片）。
+    /// 认不全的时候拿它当劈开的刀口。
+    private func bestSilence(_ pcm: [Float], from: Double, to: Double) -> Double? {
+        guard to - from > 3.5 else { return nil }
+        let segs = voicedSegments(Array(pcm[Int(from * sr)..<min(pcm.count, Int(to * sr))]))
+        guard segs.count >= 2 else { return nil }
+        var best: Double? = nil
+        var bestGap = 0.0
+        for i in 1..<segs.count {
+            let gap = segs[i].0 - segs[i - 1].1
+            let mid = from + (segs[i].0 + segs[i - 1].1) / 2
+            guard mid - from > 1.5, to - mid > 1.5 else { continue }
+            if gap > bestGap { bestGap = gap; best = mid }
+        }
+        return best
+    }
+
+    /// 把整条音频切成"一段一段能一口气听写完"的小段，**刀口一律落在静音里**。
+    ///
+    /// 做法：先找出有人说话的那些片段（20 毫秒一帧看能量），再从头往下攒，
+    /// 攒够 `batchTarget` 秒就在下一处静音的正中间下刀；单段最长 `batchMax` 秒
+    /// （碰上一口气说很久的，也得切，否则听写器又要中途收工）。
+    private func speechBatches(_ pcm: [Float], total: Double) -> [(Double, Double)] {
+        let segs = voicedSegments(pcm)
+        guard !segs.isEmpty else { return [(0, total)] }
+        var out: [(Double, Double)] = []
+        var start = 0.0
+        var i = 0
+        while i < segs.count {
+            var j = i
+            // 至少收一段，之后看攒够没有
+            while j + 1 < segs.count, segs[j + 1].1 - start <= batchTarget { j += 1 }
+            // 一口气说太久：在 batchMax 处硬切（下面还会挑最安静的点）
+            var cut: Double
+            if j + 1 < segs.count {
+                cut = (segs[j].1 + segs[j + 1].0) / 2          // 静音正中间
+            } else {
+                cut = total
+            }
+            if cut - start > batchMax {
+                cut = quietCut(pcm, target: start + batchMax, total: total)
+            }
+            out.append((start, min(cut, total)))
+            start = min(cut, total)
+            // 下一段从刀口之后的第一个说话片段开始
+            while i < segs.count, segs[i].1 <= start { i += 1 }
+            if start >= total - 0.05 { break }
+        }
+        if let last = out.last, last.1 < total - 0.3 { out.append((last.1, total)) }
+        return out.filter { $0.1 - $0.0 > 0.3 }
+    }
+
+    /// 有人说话的片段（起止秒）。静音短于 `minSil` 不算断，太碎的片段丢掉。
+    private func voicedSegments(_ pcm: [Float], minSil: Double = 0.3,
+                                minSpeech: Double = 0.15) -> [(Double, Double)] {
+        let win = Int(0.02 * sr)
+        guard pcm.count > win * 5 else { return [] }
+        var e: [Double] = []
+        var i = 0
+        while i + win <= pcm.count {
+            var v = 0.0
+            for k in i..<(i + win) { v += Double(pcm[k] * pcm[k]) }
+            e.append((v / Double(win)).squareRoot())
+            i += win
+        }
+        guard let peak = e.max(), peak > 0 else { return [] }
+        let th = peak * 0.06
+        var segs: [(Double, Double)] = []
+        var st: Int? = nil
+        var silence = 0
+        for (k, v) in e.enumerated() {
+            if v > th {
+                if st == nil { st = k }
+                silence = 0
+            } else if let s0 = st {
+                silence += 1
+                if Double(silence) * 0.02 >= minSil {
+                    let a = Double(s0) * 0.02, b = Double(k - silence + 1) * 0.02
+                    if b - a >= minSpeech { segs.append((a, b)) }
+                    st = nil; silence = 0
+                }
+            }
+        }
+        if let s0 = st {
+            let a = Double(s0) * 0.02, b = Double(e.count) * 0.02
+            if b - a >= minSpeech { segs.append((a, b)) }
+        }
+        return segs
     }
 
     /// 这段音频里有多少秒是"真的有人在说话"（20 毫秒一帧，按能量卡门槛）。
@@ -240,7 +358,7 @@ final class ImportService: ObservableObject {
     ///
     /// 所以这里拿"认到第几秒"跟这块的真实长度比，差得多就重来（最多三次，
     /// 中间歇 0.7 秒让上一个识别任务彻底放手）。拿不到时间戳的机器上不为难它，直接收。
-    private func transcribe(_ chunk: [Float]) async throws -> String {
+    private func transcribe(_ chunk: [Float]) async throws -> (text: String, enough: Bool) {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("imp-\(UUID().uuidString).wav")
         try writeWav(chunk, to: tmp)
@@ -256,12 +374,12 @@ final class ImportService: ObservableObject {
             let h = try await Speech.shared.transcribeDetailed(tmp)
             let n = h.text.split(separator: " ").count
             if n > bestN { bestN = n; best = h.text }
-            if n >= least { return h.text }
+            if n >= least { return (h.text, true) }
             print("IMPORT 第 \(attempt) 次只认出 \(n) 词（有人说话 "
                   + "\(String(format: "%.1f", voiced)) 秒，至少该有 \(least) 词），重来")
             try? await Task.sleep(nanoseconds: 900_000_000)
         }
-        return best
+        return (best, false)
     }
 
     /// 按**说话的停顿**分句 —— 断句的依据是声音，不是标点。
