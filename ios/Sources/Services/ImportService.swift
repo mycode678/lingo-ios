@@ -99,21 +99,13 @@ final class ImportService: ObservableObject {
                 // **整块只对齐一次**，再按句子把词切开。
                 // 曾经是每句拿整块去对一次 —— 那一句会被摊到整整 45 秒上，
                 // 时间戳全错，切出来的音频跟文字对不上，整个导入就废了。
-                let parts = split(text)
                 if let all = try? await Aligner.shared.align(pcm: chunk, text: text), !all.isEmpty {
                     // 块内时间轴 → 整段时间轴
-                    var words = all.map {
+                    let words = all.map {
                         Aligner.Word(text: $0.text, start: $0.start + t,
                                      end: $0.end + t, score: $0.score)
                     }
-                    for p in parts {
-                        let n = p.split(separator: " ").count
-                        guard words.count >= max(2, n / 2) else { break }
-                        // 对齐可能少认几个词，按句子的词数依次取，取不满就把剩下的都给它
-                        let take = min(n, words.count)
-                        sentences.append((p, Array(words.prefix(take))))
-                        words.removeFirst(take)
-                    }
+                    sentences.append(contentsOf: group(words))
                 }
             }
             t = end
@@ -199,7 +191,55 @@ final class ImportService: ObservableObject {
         return try await Speech.shared.transcribe(tmp)
     }
 
-    /// 分句。**上限跟难度闸对齐（18 词）** —— 分出来的句子太长，
+    /// 按**说话的停顿**分句 —— 断句的依据是声音，不是标点。
+    ///
+    /// 为什么不按标点：本机听写默认不给标点（`addsPunctuation = false`），
+    /// 原来只好"每 18 个词硬切一刀"。实测 107 秒的考卷出来只有 7 句，
+    /// 句子从人家话说到一半的地方切开，而且**按词数依次分配**那一套
+    /// （取不满就 break）把后一半的词整个丢了：225 个词只剩 114 个。
+    ///
+    /// 现在的规矩：对齐已经给了每个词几点几秒，**相邻两个词之间静了 0.38 秒**
+    /// 就断一句；一句超过难度闸（18 词）就在这一句里最长的那处停顿再劈开。
+    /// 太碎的（少于 3 个词）并进旁边那句 —— 单独一个 "Yeah." 没法练。
+    func group(_ ws: [Aligner.Word], gap: Double = 0.38) -> [(en: String, words: [Aligner.Word])] {
+        guard !ws.isEmpty else { return [] }
+        var groups: [[Aligner.Word]] = [[ws[0]]]
+        for w in ws.dropFirst() {
+            if let last = groups[groups.count - 1].last, w.start - last.end >= gap {
+                groups.append([w])
+            } else {
+                groups[groups.count - 1].append(w)
+            }
+        }
+        // 太长的再劈：在最长的那处停顿下刀，递归到都不超上限
+        func chop(_ g: [Aligner.Word]) -> [[Aligner.Word]] {
+            guard g.count > TrainKit.maxWords else { return [g] }
+            var bi = g.count / 2, best = -1.0
+            for i in 1..<g.count {
+                let d = g[i].start - g[i - 1].end
+                if d > best { best = d; bi = i }
+            }
+            return chop(Array(g[0..<bi])) + chop(Array(g[bi...]))
+        }
+        groups = groups.flatMap(chop)
+        // 碎片并进旁边（先并前一句，前面没有就并后一句）
+        var merged: [[Aligner.Word]] = []
+        for g in groups {
+            if g.count < 3, let last = merged.last,
+               last.count + g.count <= TrainKit.maxWords {
+                merged[merged.count - 1] = last + g
+            } else {
+                merged.append(g)
+            }
+        }
+        if merged.count >= 2, merged[0].count < 3 {
+            merged[1] = merged[0] + merged[1]; merged.removeFirst()
+        }
+        return merged.filter { $0.count >= 2 }
+            .map { (en: $0.map { $0.text }.joined(separator: " "), words: $0) }
+    }
+
+    /// 分句（按标点，字幕/课文那条路还用得上）。**上限跟难度闸对齐（18 词）** —— 分出来的句子太长，
     /// 七个练法直接用不了，等于导进来白导。
     func split(_ text: String) -> [String] {
         var out: [String] = []
