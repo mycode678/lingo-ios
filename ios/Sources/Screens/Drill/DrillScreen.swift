@@ -589,7 +589,10 @@ struct DrillScreen: View {
         // "下面塌了一块"。平板那块地本来就富余，给波形最划算：圈半秒更好圈。
         // 各机型算出来：SE 220 / 15 Pro Max 261（跟以前一样）/ iPad 12.9 约 540。
         let wide = min(geo.size.width, geo.size.height) >= 700      // iPad
-        let ratio: CGFloat = wide ? 0.42 : 0.28
+        // 平板上不显示文字时（默认就是不显示），下面那块地整片空着 ——
+        // 那种时候波形再多拿一点（0.55），空白就不至于占掉半屏。
+        // 手机上**不这么干**：他连着两次说波形太高，那是按占屏比例说的。
+        let ratio: CGFloat = wide ? (anyText ? 0.42 : 0.55) : 0.28
         let waveMax: CGFloat = min(max(220, geo.size.height * ratio), room)
         return VStack(spacing: 0) {
             probeButtons

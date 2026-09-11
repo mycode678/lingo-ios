@@ -181,7 +181,10 @@ struct TrainSessionScreen: View {
                     GeometryReader { g in
                         ScrollView {
                             VStack(spacing: 0) {
+                                // 大屏（iPad）上题面卡片会铺满 1024 点宽，一行字横穿整屏，
+                                // 看着像一条孤零零的横带。跟精听台的正文一个规矩：限宽居中。
                                 question.padding(T.side)
+                                    .frame(maxWidth: T.readable)
                                     .frame(maxWidth: .infinity,
                                            minHeight: g.size.height * 0.78,
                                            alignment: .center)
