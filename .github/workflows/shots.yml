@@ -98,6 +98,15 @@ jobs:
             shoot "iPhone 15 Pro Max" "train" light "-usepack -mode $M"
           done
           shoot "iPhone SE (3rd generation)" "train" light "-usepack -mode blank"
+          # iPad：2026-09-11 起 iPad 是正式支持的机型（他的原话：以后这个 app
+          # 要支持 iphone 和 ipad，要适配所有苹果的 iphone 和 ipad）。
+          # 大屏跟手机是两种排版，不截就等于没人看。
+          for D in "iPad Pro 13-inch (M4)" "iPad mini (A17 Pro)"; do
+            shoot "$D" "drill" light
+            shoot "$D" "drill" light "-land"
+          done
+          shoot "iPad Pro 13-inch (M4)" "drill" dark
+          shoot "iPad Pro 13-inch (M4)" "train" light "-usepack -mode blank"
           # 抽屉里的三块也截下来：句子列表（筛选行要钉在顶上）、间隔面板、改倍速面板
           shoot "iPhone 15 Pro Max" "drill" light "-sheet list"
           shoot "iPhone 15 Pro Max" "drill" light "-sheet gap"
@@ -135,9 +144,16 @@ jobs:
             grep -E "AUDIT|LAYOUT-" "$OUT" | tail -20 || true
             if grep -q "LAYOUT-FAIL" "$OUT"; then fail=1; fi
           }
+          # 尺寸矩阵：小手机 / 大手机 / 小平板 / 大平板，每种竖横两个方向。
+          # 都带"四样文字全开＋大字号"（最容易压出重叠的组合）。
           audit "iPhone 15 Pro Max" ""            # 竖屏，四样文字全开＋大字号
           audit "iPhone 15 Pro Max" "-land"
           audit "iPhone SE (3rd generation)" ""
+          audit "iPhone SE (3rd generation)" "-land"
+          audit "iPad Pro 13-inch (M4)" ""
+          audit "iPad Pro 13-inch (M4)" "-land"
+          audit "iPad mini (A17 Pro)" ""
+          audit "iPad mini (A17 Pro)" "-land"
           [ "$fail" = "0" ] || { echo "::error::布局体检有重叠/超屏"; exit 1; }
 
       # ---- 真机式交互测试：真的转屏、真的点、真的滑 ----
@@ -164,6 +180,24 @@ jobs:
           # 失败时把真正的原因贴出来（只 grep "Test Case" 会把编译错、崩溃原因全滤掉）
           # 加 || true：没找到错误时 grep 返回 1，会把整步判成失败（测试其实全过了）
           grep -E "error:|Failing tests|crashed|could not be launched" /tmp/test.log | sort -u | head -20 || true
+
+      # ---- iPad 上再跑一遍交互测试 ----
+      # iPad 不是"手机版放大"：标签栏在顶部不是底部（XCUI 里连 TabBar 容器都没有），
+      # 分栏、浮层、手势落点都可能不一样。只在 iPhone 上跑等于 iPad 没测过。
+      - name: 交互测试（iPad）
+        run: |
+          cd ios
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPad Pro 13-inch (M4) (" | sed -E 's/.*\(([-0-9A-F]{36})\).*/\1/')
+          echo "在 iPad $UDID 上跑交互测试"
+          set -o pipefail
+          xcodebuild test -project Lingo.xcodeproj -scheme Lingo \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -only-testing:LingoUITests \
+            -skip-testing:LingoUITests/AlignerUITests \
+            -skip-testing:LingoUITests/ShotUITests \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee /tmp/test-ipad.log \
+            | grep -E "Test Case|error:|\*\* TEST" | tail -40
+          grep -E "error:|Failing tests|crashed|could not be launched" /tmp/test-ipad.log | sort -u | head -20 || true
 
       - uses: actions/upload-artifact@v4
         if: always()

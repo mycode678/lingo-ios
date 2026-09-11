@@ -35,8 +35,10 @@ final class DiagUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()                          // 真环境，不加 -demo
 
-        // 「材料」是第 2 个标签
-        let tab = app.tabBars.buttons["材料"]
+        // 「材料」是第 2 个标签。iPad 上标签栏是顶部浮动条、不是 TabBar 容器，
+        // 按 tabBars 找会空手而归 —— 找不到就退回整屏找同名按钮。
+        var tab = app.tabBars.buttons["材料"]
+        if !tab.waitForExistence(timeout: 5) { tab = app.buttons["材料"] }
         XCTAssertTrue(tab.waitForExistence(timeout: 20), "连标签栏都没出来")
         tab.tap()
 
@@ -50,7 +52,8 @@ final class DiagUITests: XCTestCase {
         print("【有没有「去填账号密码」按钮】\(go.exists)")
 
         // 顺便看一眼设置里服务器那一段填没填 —— 只读，不输入不保存
-        app.tabBars.buttons["我的"].tap()
+        let mine = app.tabBars.buttons["我的"].exists ? app.tabBars.buttons["我的"] : app.buttons["我的"]
+        mine.tap()
         sleep(3)
         let gear = app.navigationBars.buttons.element(boundBy: app.navigationBars.buttons.count - 1)
         if gear.exists { gear.tap(); sleep(3) }

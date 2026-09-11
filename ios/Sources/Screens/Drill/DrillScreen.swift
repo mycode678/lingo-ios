@@ -579,7 +579,12 @@ struct DrillScreen: View {
         //   现在一律 260 —— 圈半秒够用了，多出来的高度**不给波形，给下面的内容**。
         // 空白问题不靠"把波形抻长"解决，那是拿一个毛病盖另一个毛病。
         let room: CGFloat = max(180, geo.size.height - 36 - cardHeight - swipeRoom)
-        let waveMax: CGFloat = min(260, room)
+        // 260 是**按 iPhone 11 Pro Max 那块屏定出来的**，占屏高 28%。
+        // 写死一个点数，到 iPad 12.9（屏高 1366）上就只剩 19%，波形细成一条线，
+        // 下面还空掉一大片 —— 所以改成按屏高的 28% 走，小屏给个 220 的地板
+        // （SE 那种屏按比例只有 187，圈半秒不够使）。
+        // 各机型算出来：SE 220 / 15 Pro Max 261（跟以前一样）/ iPad 12.9 382。
+        let waveMax: CGFloat = min(max(220, geo.size.height * 0.28), room)
         return VStack(spacing: 0) {
             probeButtons
             VStack(spacing: 8) {
@@ -609,8 +614,12 @@ struct DrillScreen: View {
                         // 卡片只要文字实际那么高（封顶屏高 35%），**别吃光剩余空间** ——
                         // 吃光的结果是字占 114 点、卡片 350 点，空出 236 点纯白，
                         // 占整个内容区的三成，界面看着像塌了。省下的高度归波形。
+                        // 大屏（iPad）上一行能排七八十个字母，眼睛扫一行要横着走半米。
+                        // 正文限宽 T.readable 居中，波形照旧铺满整屏（时间轴越宽越好圈）。
                         sentenceCard(s)
                             .frame(height: cardHeight)
+                            .frame(maxWidth: T.readable)
+                            .frame(maxWidth: .infinity)
                             .padding(.horizontal, T.side).auditBlock("原文")
                     }
                     Spacer(minLength: 0)

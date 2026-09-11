@@ -18,6 +18,11 @@ enum T {
     static let pad: CGFloat = 12         // 卡片内边距
     static let side: CGFloat = 12        // 屏幕左右留白
 
+    /// 正文一行最多铺多宽。iPad 12.9 竖屏有 1024 点宽，一行能塞七八十个字母，
+    /// 眼睛扫一行要横着走半米，读起来很累（手机上不存在这个问题，所以以前没有这一条）。
+    /// 波形、控制条这类"越宽越好用"的东西不受它管。
+    static let readable: CGFloat = 700
+
     // MARK: 圆角（只有三档）
     static let ctl: CGFloat = 10         // 按钮、输入框
     static let card: CGFloat = 14        // 卡片
