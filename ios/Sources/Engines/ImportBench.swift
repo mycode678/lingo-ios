@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Speech
 
 /// **导入精度基准**（`-demo -usepack -importbench`）。
 ///
@@ -80,6 +81,38 @@ struct ImportBenchView: View {
             summary = "标准答案不够"; verdict = "不通过：没素材"; print("BENCH 标准答案不够"); return
         }
         log(String(format: "拼成 %.1f 秒，标准答案 %d 个词", Double(big.count) / sr, truth.count))
+
+        // ---- 先自检：出 0 句的时候，得当场知道是谁没干活 ----
+        // （第一次跑就栽在这儿：出了 0 句 0 词，但看不出是识别没权限还是对齐没模型）
+        let auth = SFSpeechRecognizer.authorizationStatus()
+        let authName: String
+        switch auth {
+        case .authorized: authName = "给了"
+        case .denied: authName = "被拒了"
+        case .restricted: authName = "被限制"
+        case .notDetermined: authName = "还没问过"
+        @unknown default: authName = "不认识的状态"
+        }
+        let rec = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        log("识别权限：\(authName)；识别器可用：\(rec?.isAvailable == true)；"
+            + "本机识别支持：\(rec?.supportsOnDeviceRecognition == true)")
+        log("对齐模型在不在：\(Aligner.shared.isAvailable)")
+        if auth == .notDetermined {
+            let ok = await Speech.shared.ask()
+            log("现问了一次权限：\(ok ? "给了" : "没给")")
+        }
+        // 单独试一小段，把识别的真实报错打出来（analyze 里是 try? 吞掉的）
+        let probe = Array(big.prefix(Int(sr * 12)))
+        do {
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("bench-probe.wav")
+            try imp.writeWav(probe, to: tmp)
+            let text = try await Speech.shared.transcribe(tmp)
+            log("试听前 12 秒：「\(text)」")
+            try? FileManager.default.removeItem(at: tmp)
+        } catch {
+            log("试听失败：\(error.localizedDescription) —— \(error)")
+        }
 
         // ---- 走真流水线 ----
         let t0 = Date()
